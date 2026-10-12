@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATA_FILE = Path(os.getenv("DATA_FILE", "data.json"))
@@ -454,11 +454,102 @@ class TaskModeView(discord.ui.View):
         await self.set_mode(interaction, "random")
 
 
+async def publish_automatic_daily_tasks():
+    """Publicē katra pāra dienas uzdevumu no plkst. 09.00 pēc Latvijas laika."""
+    now = datetime.now(LATVIA_TZ)
+    if now.hour < 9:
+        return
+
+    today = now.date().isoformat()
+    for pair_id, pair in list(data.get("pairs", {}).items()):
+        if pair.get("task_date") == today:
+            continue
+
+        guild = bot.get_guild(int(pair.get("guild_id", 0)))
+        if guild is None:
+            continue
+        channel = await fetch_guild_channel(guild, pair.get("tasks_channel_id"))
+        if channel is None or not hasattr(channel, "send"):
+            continue
+
+        mode = pair.get("task_mode", "random")
+        if mode not in TASKS and mode != "random":
+            mode = "random"
+            pair["task_mode"] = mode
+        if mode == "random":
+            available = [
+                (category, task_text)
+                for group in TASKS.values()
+                for category, task_text in group
+            ]
+        else:
+            available = list(TASKS[mode])
+
+        used_tasks = {
+            entry.get("task", "")
+            for entry in pair.get("history", [])
+            if isinstance(entry, dict)
+        }
+        if pair.get("task_text"):
+            used_tasks.add(pair["task_text"])
+        fresh_choices = [item for item in available if item[1] not in used_tasks]
+        choices = fresh_choices or [
+            item for item in available if item[1] != pair.get("task_text")
+        ] or available
+        if not choices:
+            continue
+
+        if pair.get("task_text"):
+            pair.setdefault("history", []).append({
+                "date": pair.get("task_date", ""),
+                "task": pair.get("task_text", ""),
+                "category": pair.get("task_category", ""),
+                "answers": dict(pair.get("answers", {})),
+            })
+
+        category, task_text = random.choice(choices)
+        pair["task_category"] = category
+        pair["task_text"] = task_text
+        pair["task_date"] = today
+        pair["task_completed"] = False
+        pair["answers"] = {}
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt automātisko uzdevumu pārim {pair_id}: {error}")
+            continue
+
+        mode_label = MODE_LABELS.get(mode, MODE_LABELS["random"])
+        try:
+            await channel.send(
+                f"🌅 **Labrīt! Dienas uzdevums — {today}**\\n"
+                f"**Kategorija:** {category}\\n"
+                f"**Režīms:** {mode_label}\\n\\n"
+                f"{task_text}\\n\\n"
+                "Katrs iesniedz savu atbildi ar /answer. Ja uzdevums kādam nav pieņemams, "
+                "izvēlieties citu uzdevumu vai nomainiet režīmu."
+            )
+        except discord.HTTPException as error:
+            print(f"Neizdevās nosūtīt automātisko uzdevumu pārim {pair_id}: {error}")
+
+
+@tasks.loop(minutes=1)
+async def daily_task_scheduler():
+    await publish_automatic_daily_tasks()
+
+
+@daily_task_scheduler.before_loop
+async def before_daily_task_scheduler():
+    await bot.wait_until_ready()
+
+
 @bot.event
 async def on_ready():
     if not getattr(bot, "_task_mode_view_registered", False):
         bot.add_view(TaskModeView())
         bot._task_mode_view_registered = True
+    if not daily_task_scheduler.is_running():
+        daily_task_scheduler.start()
     try:
         synced = await bot.tree.sync()
         print(f"Bot: {bot.user} | Sinhronizētas {len(synced)} komandas")
