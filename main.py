@@ -61,6 +61,72 @@ MODE_LABELS = {
 }
 
 
+# Papildu uzdevumi — tos pievieno esošajai bibliotēkai, saglabājot režīmus.
+TASKS["kopā"].extend([
+    ("Romantika", "Katrs nosauciet vienu mazu ikdienas lietu, ko otrs dara un kas jums ir svarīga."),
+    ("Romantika", "Turiet viens otra rokas un minūti runājiet par kaut ko, ko gaidāt nākotnē."),
+    ("Romantika", "Izvēlieties kopīgu fotogrāfiju un pastāstiet, kāpēc tā jums ir īpaša."),
+    ("Romantika", "Katrs nosauciet vienu veidu, kā partneris varētu jums palīdzēt grūtā dienā."),
+    ("Romantika", "Sarīkojiet piecu minūšu randiņu bez telefoniem."),
+    ("Romantika", "Katrs pasakiet vienu komplimentu par otra raksturu, nevis izskatu."),
+    ("Romantika", "Izvēlieties vienu kopīgu tradīciju, ko gribētu ieviest."),
+    ("Romantika", "Katrs pabeidziet teikumu: “Es jūtos tev vistuvāk, kad…”"),
+    ("Iepazīšanās", "Pastāstiet par bērnības atmiņu, kuru partneris vēl nav dzirdējis."),
+    ("Iepazīšanās", "Katrs nosauciet vienu prasmi, ko gribētu iemācīties kopā."),
+    ("Iepazīšanās", "Kas ir viena lieta, ko cilvēki par jums bieži pārprot? Izstāstiet partnerim."),
+    ("Iepazīšanās", "Katrs nosauciet trīs lietas, kas palīdz jums atpūsties."),
+    ("Iepazīšanās", "Izrunājiet vienu sapni, kuru vēl neesat īstenojuši."),
+    ("Iepazīšanās", "Katrs nosauciet vienu vērtību, kas jums attiecībās ir vissvarīgākā."),
+    ("Izaicinājums", "Pagatavojiet vai izvēlieties viens otram nelielu uzkodu."),
+    ("Izaicinājums", "Izvēlieties filmu vai seriālu nākamajam kopīgajam vakaram."),
+    ("Izaicinājums", "Izdomājiet trīs lētus randiņus, ko varētu izmēģināt."),
+    ("Izaicinājums", "Katrs izdomājiet vienu jautru aktivitāti, ko darīt nākamajā brīvajā dienā."),
+    ("Izaicinājums", "Uztaisiet kopīgu selfiju, ja abiem tas ir patīkami."),
+    ("Humors", "Katrs izdomājiet partnerim mīļu iesauku un paskaidrojiet, kāpēc."),
+    ("Humors", "Izspēlējiet akmens–šķēres–papīrītis trīs kārtas; uzvarētājs izvēlas nākamo kopīgo dziesmu."),
+    ("Humors", "Katrs pasakiet vienu smieklīgu lietu, ko darāt, kad neviens neskatās."),
+    ("Humors", "Izdomājiet jūsu attiecībām filmas nosaukumu."),
+    ("18+", "Ja abiem ir vēlme, vienojieties par skūpstu vai pieskārienu, kas abiem patīk."),
+    ("18+", "Katrs nosauciet vienu lietu, kas jums palīdz justies iekārotiem un drošībā."),
+    ("18+", "Izrunājiet, kas jums abiem ir patīkami flirtā un kādas ir jūsu robežas."),
+    ("18+", "Ja abi piekrītat, uzrakstiet viens otram pikantu, bet ne pārāk atklātu ziņu."),
+    ("18+", "Katrs nosauciet vienu romantisku fantāziju, ko labprāt apspriestu; nav pienākuma to īstenot."),
+    ("18+", "Vienojieties par drošu vārdu vai signālu, ar kuru jebkurš var apturēt intīmu izaicinājumu."),
+    ("18+", "Ja abi vēlaties, izvēlieties privātu foto izaicinājumu un pirms tam vienojieties, ko ir ērti sūtīt."),
+    ("18+", "Sarunājiet intīmu randiņu, kurā abi varat jebkurā brīdī pateikt “nē” vai mainīt plānu."),
+])
+
+TASKS["attālināti"].extend([
+    ("Romantika", "Nosūtiet viens otram balss ziņu, kurā pasakāt, ko šodien novērtējat partnerī."),
+    ("Romantika", "Sarīkojiet virtuālu kafijas vai tējas pauzi videozvanā."),
+    ("Romantika", "Nosūtiet foto ar skatu no vietas, kur pašlaik atrodaties."),
+    ("Romantika", "Katrs uzrakstiet vienu teikumu par to, ko gribētu darīt, kad atkal būsiet kopā."),
+    ("Romantika", "Izvēlieties vienu dziesmu un noklausieties to vienlaikus."),
+    ("Romantika", "Nosūtiet partnerim trīs iemeslus, kāpēc šodien par viņu domājāt."),
+    ("Iepazīšanās", "Katrs pastāstiet par vienu šīs dienas notikumu, kas jūs pārsteidza."),
+    ("Iepazīšanās", "Uzdodiet jautājumu par partnera sapni vai mērķi un noklausieties atbildi."),
+    ("Iepazīšanās", "Nosūtiet viens otram bērnības vai skolas laika atmiņu."),
+    ("Iepazīšanās", "Katrs pasakiet, kas jums palīdz justies tuviem arī tad, kad esat tālu."),
+    ("Izaicinājums", "Vienlaikus pagatavojiet vienu un to pašu dzērienu un sazvanieties."),
+    ("Izaicinājums", "Izvēlieties vienu mazu mērķi, ko abi paveiksiet līdz rītdienai."),
+    ("Izaicinājums", "Nosūtiet foto ar priekšmetu, kas jums atgādina par otru."),
+    ("Izaicinājums", "Sarīkojiet piecu minūšu videozvanu bez citu lietu darīšanas paralēli."),
+    ("Izaicinājums", "Katrs iesakiet otram vienu dziesmu, filmu vai grāmatu."),
+    ("Humors", "Nosūtiet pašreizējās sejas izteiksmi, kas raksturo jūsu garastāvokli."),
+    ("Humors", "Izdomājiet trīs smieklīgus vārdus, kas raksturo jūsu pāri."),
+    ("Humors", "Nosūtiet viens otram mēmi, kas vislabāk raksturo jūsu attiecības."),
+    ("Humors", "Katrs uzrakstiet īsu ziņu tā, it kā jūs būtu ziņu diktori."),
+    ("18+", "Ja abi vēlaties, nosūtiet privātu flirtējošu ziņu un ļaujiet partnerim atbildēt savā tempā."),
+    ("18+", "Sarunājiet privātu videozvanu un pastāstiet, kas jums šķiet pievilcīgs otrā."),
+    ("18+", "Ja abiem ir ērti, nosūtiet privātu pikantu foto; vispirms vienojieties par robežām."),
+    ("18+", "Katrs nosauciet vienu intīmu vēlmi, ko gribētu mierīgi pārrunāt."),
+    ("18+", "Ja abi skaidri piekrītat, nosūtiet viens otram privātu juteklisku video. Uzdevumu var izlaist, un saturu nedrīkst pārsūtīt bez atļaujas."),
+    ("18+", "Nosūtiet partnerim balss ziņu ar flirtējošu komplimentu."),
+    ("18+", "Izrunājiet, kādas fotogrāfijas vai ziņas jums abiem ir patīkami saņemt un ko nevēlaties saņemt."),
+    ("18+", "Izvēlieties attālinātu randiņu ar romantisku vai juteklisku noskaņu, kas abiem ir ērta."),
+])
+
+
 def load_data():
     if not DATA_FILE.exists():
         return {"pairs": {}}
@@ -216,6 +282,10 @@ class PairInvite(discord.ui.View):
                 "task_text": "",
                 "task_category": "",
                 "task_mode": "random",
+                "task_completed": False,
+                "completed_tasks": 0,
+                "streak": 0,
+                "last_completed_date": "",
                 "answers": {},
                 "history": [],
             }
@@ -227,6 +297,7 @@ class PairInvite(discord.ui.View):
                 "• /task — publicē šodienas uzdevumu\n"
                 "• /task_mode — izvēlies kopā, attālināti vai nejauši\n"
                 "• /answer — iesniedz savu atbildi\n"
+                "• /stats — apskati izpildītos uzdevumus un dienu sēriju\n"
                 "• /unpair — noņem pāri pēc apstiprinājuma",
                 view=TaskModeView()
             )
@@ -481,6 +552,7 @@ async def task(interaction: discord.Interaction):
         pair["task_category"] = category
         pair["task_text"] = task_text
         pair["task_date"] = today
+        pair["task_completed"] = False
         pair["answers"] = {}
         try:
             save_data()
@@ -569,6 +641,25 @@ async def answer(
         return
 
     pair.setdefault("answers", {})[str(interaction.user.id)] = str(teksts)
+    completed_now = False
+    if len(pair["answers"]) >= 2 and not pair.get("task_completed", False):
+        pair["task_completed"] = True
+        pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
+        last_date = pair.get("last_completed_date", "")
+        today = today_string()
+        if last_date == today:
+            pass
+        elif last_date:
+            try:
+                previous_day = datetime.fromisoformat(last_date).date()
+                current_day = datetime.fromisoformat(today).date()
+                pair["streak"] = int(pair.get("streak", 0)) + 1 if (current_day - previous_day).days == 1 else 1
+            except ValueError:
+                pair["streak"] = 1
+        else:
+            pair["streak"] = 1
+        pair["last_completed_date"] = today
+        completed_now = True
     try:
         save_data()
     except OSError as error:
@@ -591,8 +682,41 @@ async def answer(
             print(f"Neizdevās publicēt atbildi vēstures kanālā: {error}")
 
     submitted_count = len(pair["answers"])
+    completion_note = (
+        f"\n🎉 Uzdevums izpildīts! Kopā izpildīti: {pair.get('completed_tasks', 0)}. "
+        f"Pašreizējā sērija: {pair.get('streak', 0)} dienas."
+        if pair.get("task_completed", False)
+        else ""
+    )
     await interaction.response.send_message(
-        f"Atbilde saglabāta. Iesniegtas {submitted_count}/2 atbildes šodienas uzdevumam.",
+        f"Atbilde saglabāta. Iesniegtas {submitted_count}/2 atbildes šodienas uzdevumam."
+        f"{completion_note}",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="stats",
+    description="Parāda pāra uzdevumu statistiku",
+)
+async def stats(interaction: discord.Interaction):
+    _, pair = get_pair_for_user(interaction.user.id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Vispirms izveido pāri ar /pair_invite un izmanto sava pāra serveri.",
+            ephemeral=True,
+        )
+        return
+    completed = int(pair.get("completed_tasks", 0))
+    streak = int(pair.get("streak", 0))
+    last_date = pair.get("last_completed_date") or "Pagaidām nav"
+    answers = pair.get("answers", {})
+    await interaction.response.send_message(
+        f"📊 **Jūsu pāra statistika**\n"
+        f"✅ Kopā izpildīti uzdevumi: **{completed}**\n"
+        f"🔥 Pašreizējā dienu sērija: **{streak}**\n"
+        f"📅 Pēdējais izpildītais uzdevums: **{last_date}**\n"
+        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**",
         ephemeral=True,
     )
 
