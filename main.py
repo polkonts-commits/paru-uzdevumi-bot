@@ -127,6 +127,65 @@ TASKS["attālināti"].extend([
 ])
 
 
+# Jauns uzdevumu papildinājums — dažādībai un mazāk atkārtojumiem.
+TASKS["kopā"].extend([
+    ("Komunikācija", "Katrs pabeidziet teikumu: “Man ir vieglāk tev pastāstīt par grūtībām, kad…”"),
+    ("Komunikācija", "Vienojieties par vienu frāzi, ko lietot, kad vajadzīga pauze strīda laikā."),
+    ("Komunikācija", "Katrs nosauciet vienu lietu, ko partneris var darīt, lai jūs labāk uzklausītu."),
+    ("Komunikācija", "Piecas minūtes runājiet pārmaiņus: viens runā, otrs tikai klausās, pēc tam mainieties."),
+    ("Komunikācija", "Katrs pasakiet vienu pateicību par kaut ko pavisam ikdienišķu."),
+    ("Kopīga nākotne", "Izveidojiet sarakstu ar trim lietām, ko gribētu piedzīvot nākamajā gadā."),
+    ("Kopīga nākotne", "Izvēlieties vienu kopīgu mērķi un nosauciet pirmo mazo soli tā sasniegšanai."),
+    ("Kopīga nākotne", "Iedomājieties ideālu brīvdienu kopā un salīdziniet savas idejas."),
+    ("Kopīga nākotne", "Katrs nosauciet vienu jaunu tradīciju, ko varētu ieviest katru mēnesi."),
+    ("Atmiņas", "Pastāstiet par brīdi, kad partneris jūs patīkami pārsteidza."),
+    ("Atmiņas", "Atrodiet kopīgu atmiņu, par kuru parasti nerunājat, un izstāstiet, ko tā jums nozīmē."),
+    ("Atmiņas", "Katrs nosauciet vienu vietu, uz kuru gribētu aizbraukt kopā, un kāpēc."),
+    ("Ikdiena", "Izvēlieties vienu mazu pienākumu, ko šonedēļ varētu atvieglot otram."),
+    ("Ikdiena", "Katrs pasakiet, kas jums palīdz atgūt spēkus pēc smagas dienas."),
+    ("Ikdiena", "Sarīkojiet desmit minūšu kārtības vai plānošanas sprintu, lai atbrīvotu laiku kopā būšanai."),
+    ("Spēle", "Izdomājiet viens otram trīs jautājumus ar atbilžu variantiem un pārbaudiet, cik labi pazīstat viens otru."),
+    ("Spēle", "Katrs uzzīmējiet otru trīsdesmit sekundēs un parādiet rezultātu."),
+    ("Spēle", "Izvēlieties nejaušu priekšmetu tuvumā un izdomājiet tam smieklīgu kopīgu pielietojumu."),
+    ("Spēle", "Spēlējiet “divas patiesības un viens izdomājums” par savu dzīvi."),
+    ("Tuvība", "Katrs nosauciet vienu robežu un vienu lietu, kas palīdz justies droši attiecībās."),
+    ("Tuvība", "Pajautājiet partnerim, kāds uzmanības apliecinājums viņam šonedēļ būtu vispatīkamākais."),
+    ("Tuvība", "Ja abiem patīkami, pasēdiet apskāvušies klusumā vienu minūti."),
+    ("18+", "Privāti pārrunājiet, kāda veida flirtu katrs šobrīd vēlas un kāda veida ne."),
+    ("18+", "Katrs nosauciet vienu romantisku pieskārienu, kas jums patīk; nekas nav jāizmēģina bez abu piekrišanas."),
+    ("18+", "Izveidojiet kopīgu “jā / varbūt / nē” sarakstu romantiskām vai intīmām idejām un pārrunājiet to bez spiediena."),
+    ("18+", "Sarunājiet vakaru ar romantisku noskaņu, kurā jebkurš var mainīt domas vai pārtraukt aktivitāti."),
+])
+
+TASKS["attālināti"].extend([
+    ("Komunikācija", "Nosūtiet partnerim ziņu: “Šodien es gribētu, lai tu zini…” un pabeidziet to godīgi."),
+    ("Komunikācija", "Sazvanieties uz piecām minūtēm un katrs atkārtojiet vienu svarīgu domu, ko dzirdējāt no otra."),
+    ("Komunikācija", "Katrs nosūtiet vienu jautājumu, kas palīdzētu labāk saprast otra pašreizējo noskaņojumu."),
+    ("Komunikācija", "Vienojieties par vienu veidu, kā paziņot, ka esat aizņemts, bet vēlāk gribat sazināties."),
+    ("Kopīga nākotne", "Katrs nosūtiet vienu ideju nākamajam randiņam un kopā izvēlieties vienu."),
+    ("Kopīga nākotne", "Izveidojiet kopīgu trīs lietu sarakstu, ko gribat paveikt nākamajā mēnesī."),
+    ("Kopīga nākotne", "Atrodiet vietu kartē, ko gribētu apmeklēt kopā, un nosūtiet viens otram saiti."),
+    ("Atmiņas", "Nosūtiet vienu vecu foto vai aprakstiet atmiņu, kas jums liek pasmaidīt."),
+    ("Atmiņas", "Katrs pastāstiet par brīdi, kad jutāties īpaši atbalstīti no partnera."),
+    ("Atmiņas", "Nosūtiet dziesmu, kas atgādina par konkrētu kopīgu notikumu, un paskaidrojiet kāpēc."),
+    ("Ikdiena", "Nosūtiet foto ar savu šodienas mazo uzvaru."),
+    ("Ikdiena", "Katrs izvēlieties vienu mazu pašaprūpes darbību un vakarā pastāstiet, kā izdevās."),
+    ("Ikdiena", "Sarīkojiet vienlaicīgu tējas vai kafijas pauzi un apmainieties ar vienu labu ziņu."),
+    ("Spēle", "Spēlējiet attālināti “uzmini priekšmetu”: aprakstiet kaut ko sev blakus, nenosaucot tā vārdu."),
+    ("Spēle", "Katrs nosūtiet trīs faktus par savu dienu, un partnerim jāuzmin, kurš ir svarīgākais."),
+    ("Spēle", "Izveidojiet viens otram īsu viktorīnu par kopīgām atmiņām."),
+    ("Spēle", "Nosūtiet piecu sekunžu audio ar kādu skaņu un ļaujiet otram uzminēt, kas tas ir."),
+    ("Tuvība", "Pajautājiet partnerim, vai viņam šodien vairāk vajadzīgs padoms, uzklausīšana vai uzmundrinājums."),
+    ("Tuvība", "Nosūtiet vienu konkrētu komplimentu par partnera rīcību vai rakstura īpašību."),
+    ("Tuvība", "Katrs pabeidziet ziņā teikumu: “Es jūtos tev tuvu, kad tu…”"),
+    ("18+", "Pirms flirtējošas vai pikantas ziņas nosūtīšanas pajautājiet, vai partnerim šobrīd tāds saturs ir vēlams."),
+    ("18+", "Katrs nosauciet vienu romantisku ideju nākamajam randiņam, kuru abi varat brīvi pieņemt vai noraidīt."),
+    ("18+", "Pārrunājiet, kā saglabāt privātumu, ja sūtāt viens otram personiskas ziņas vai attēlus."),
+    ("18+", "Nosūtiet partnerim flirtējošu komplimentu bez prasības uzreiz atbildēt."),
+    ("18+", "Kopīgi izveidojiet “jā / varbūt / nē” sarakstu intīmām idejām, katram atbildot tikai tik detalizēti, cik ērti."),
+])
+
+
 def load_data():
     if not DATA_FILE.exists():
         return {"pairs": {}}
