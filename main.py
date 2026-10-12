@@ -15,18 +15,50 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 DATA_FILE = Path(os.getenv("DATA_FILE", "data.json"))
 LATVIA_TZ = ZoneInfo("Europe/Riga")
 
-TASKS = [
-    "Pasakiet viens otram trīs lietas, ko šodien novērtējat.",
-    "Atcerieties vienu kopīgu brīdi, kas jums abiem liek pasmaidīt.",
-    "Katrs nosauciet vienu lietu, ko vēlētos kopā izmēģināt.",
-    "Uzrakstiet viens otram īsu, patiesu komplimentu.",
-    "Pastāstiet, kas jums šonedēļ palīdzētu justies tuvākiem.",
-    "Izdomājiet vienu nelielu kopīgu mērķi nākamajām septiņām dienām.",
-    "Katrs nosauciet vienu lietu, par kuru esat pateicīgi otram.",
-    "Vienojieties par vienu kopīgu aktivitāti nākamajai nedēļai.",
-    "Uzdodiet viens otram jautājumu, ko sen gribējāt uzdot.",
-    "Atcerieties, kāds bija jūsu pirmais iespaids vienam par otru.",
-]
+TASKS = {
+    "kopā": [
+        ("Romantika", "Apskaujiet viens otru vismaz divdesmit sekundes, nesteidzoties."),
+        ("Romantika", "Katrs pasakiet trīs lietas, ko šodien novērtējat otrā."),
+        ("Romantika", "Atcerieties savu pirmo iespaidu vienam par otru un izstāstiet to vēlreiz."),
+        ("Romantika", "Katrs pasakiet vienu kopīgu atmiņu, kuru gribētos piedzīvot vēlreiz."),
+        ("Romantika", "Sarīkojiet viens otram piecu minūšu masāžu, ja abiem tas ir patīkami."),
+        ("Romantika", "Noskūpstiet viens otru un pasakiet, kas jums šobrīd patīk jūsu attiecībās."),
+        ("Iepazīšanās", "Uzdodiet viens otram jautājumu, kuru sen gribējāt uzdot."),
+        ("Iepazīšanās", "Katrs nosauciet vienu vēlmi, ko gribētu kopā īstenot šajā mēnesī."),
+        ("Iepazīšanās", "Pastāstiet, kas jums palīdz justies mīlētiem un novērtētiem."),
+        ("Izaicinājums", "Izvēlieties dziesmu, kas raksturo jūsu attiecības, un paskaidrojiet izvēli."),
+        ("Izaicinājums", "Izdomājiet spontānu randiņu, ko varat sarīkot tuvāko septiņu dienu laikā."),
+        ("Humors", "Katrs atdariniet otru desmit sekundes — draudzīgi un bez aizvainojuma."),
+        ("18+", "Ja abi vēlaties, vienojieties par kādu jaunu skūpstu vai pieskārienu, ko izmēģināt."),
+        ("18+", "Katrs nosauciet vienu lietu, kas jums šķiet pievilcīga otrā."),
+        ("18+", "Ja abiem ir ērti, nosūtiet viens otram privātu pikantu foto. Pirms fotografēšanas vienojieties par robežām; uzdevumu drīkst izlaist."),
+        ("18+", "Izrunājiet vienu intīmu vēlmi, ko abi labprāt apspriestu bez spiediena."),
+        ("18+", "Ja abi piekrītat, uzņemiet privātu, juteklisku video tikai viens otram. Neievietojiet to publiski; jebkurš var atteikties."),
+        ("18+", "Sarunājiet viens otram romantisku vai juteklisku pārsteigumu, kas abiem ir patīkams."),
+    ],
+    "attālināti": [
+        ("Romantika", "Nosūtiet viens otram balss ziņu ar patiesu komplimentu."),
+        ("Romantika", "Sarīkojiet desmit minūšu videozvanu, kurā runājat tikai par patīkamām lietām."),
+        ("Romantika", "Nosūtiet foto ar kaut ko, kas šodien lika jums atcerēties partneri."),
+        ("Iepazīšanās", "Katrs pastāstiet vienu lietu par savu dienu, ko otrs vēl nezina."),
+        ("Iepazīšanās", "Uzdodiet viens otram jautājumu un atbildiet godīgi."),
+        ("Izaicinājums", "Nosūtiet viens otram dziesmu, kas atbilst jūsu šībrīža noskaņojumam."),
+        ("Izaicinājums", "Vienlaikus noskatieties vienu īsu video un pēc tam apmainieties ar iespaidiem."),
+        ("Humors", "Nosūtiet smieklīgu pašbildi vai emocijzīmi, kas raksturo jūsu dienu."),
+        ("Humors", "Katrs nosūtiet trīs emocijzīmes, kas raksturo otru, un paskaidrojiet izvēli."),
+        ("18+", "Ja abi vēlaties, nosūtiet partnerim privātu pikantu foto. Vispirms vienojieties par robežām; uzdevumu drīkst izlaist."),
+        ("18+", "Veiciet privātu videozvanu un katrs nosauciet vienu romantisku vai juteklisku vēlmi, ko gribētu apspriest."),
+        ("18+", "Ja abi skaidri piekrītat, nosūtiet partnerim privātu juteklisku video. Neviens nav spiests to darīt, un saturu nevajag pārsūtīt tālāk."),
+        ("18+", "Nosūtiet partnerim flirtējošu ziņu, kas liek viņam pasmaidīt."),
+        ("18+", "Pastāstiet viens otram, kāds randiņš jums šķistu īpaši romantisks vai juteklisks."),
+    ],
+}
+
+MODE_LABELS = {
+    "kopā": "🫂 Uzdevums kopā",
+    "attālināti": "📱 Uzdevums attālināti",
+    "random": "🎲 Nejauši — visi uzdevumi",
+}
 
 
 def load_data():
@@ -182,6 +214,8 @@ class PairInvite(discord.ui.View):
                 "history_channel_id": history_channel.id,
                 "task_date": "",
                 "task_text": "",
+                "task_category": "",
+                "task_mode": "random",
                 "answers": {},
                 "history": [],
             }
@@ -191,8 +225,10 @@ class PairInvite(discord.ui.View):
                 "Jūsu privātā pāra telpa ir gatava.\n\n"
                 "Komandas:\n"
                 "• /task — publicē šodienas uzdevumu\n"
+                "• /task_mode — izvēlies kopā, attālināti vai nejauši\n"
                 "• /answer — iesniedz savu atbildi\n"
-                "• /unpair — noņem pāri pēc apstiprinājuma"
+                "• /unpair — noņem pāri pēc apstiprinājuma",
+                view=TaskModeView()
             )
             await history_channel.send(
                 "📚 Šeit glabāsies iepriekšējo uzdevumu un atbilžu vēsture."
@@ -289,8 +325,69 @@ class UnpairConfirmation(discord.ui.View):
         self.stop()
 
 
+class TaskModeView(discord.ui.View):
+    """Persistent mode selector posted in each couple's private task channel."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def set_mode(self, interaction: discord.Interaction, mode: str):
+        _, pair = get_pair_for_user(interaction.user.id)
+        if not pair or not user_is_in_guild_pair(interaction, pair):
+            await interaction.response.send_message(
+                "Šo izvēli var veikt tikai sava pāra privātajā serverī.",
+                ephemeral=True,
+            )
+            return
+        if interaction.channel_id != int(pair.get("tasks_channel_id", 0)):
+            await interaction.response.send_message(
+                "Režīmu vari mainīt sava pāra uzdevumu kanālā.",
+                ephemeral=True,
+            )
+            return
+        pair["task_mode"] = mode
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt uzdevumu režīmu: {error}")
+            await interaction.response.send_message(
+                "Neizdevās saglabāt izvēli. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"Uzdevumu režīms nomainīts: **{MODE_LABELS[mode]}**. "
+            "Izvēle paliks spēkā, līdz to nomainīsiet.",
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="Kopā", emoji="🫂", style=discord.ButtonStyle.success,
+        custom_id="task_mode:together",
+    )
+    async def together(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.set_mode(interaction, "kopā")
+
+    @discord.ui.button(
+        label="Attālināti", emoji="📱", style=discord.ButtonStyle.primary,
+        custom_id="task_mode:remote",
+    )
+    async def remote(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.set_mode(interaction, "attālināti")
+
+    @discord.ui.button(
+        label="Nejauši — visi", emoji="🎲", style=discord.ButtonStyle.secondary,
+        custom_id="task_mode:random",
+    )
+    async def random_mode(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.set_mode(interaction, "random")
+
+
 @bot.event
 async def on_ready():
+    if not getattr(bot, "_task_mode_view_registered", False):
+        bot.add_view(TaskModeView())
+        bot._task_mode_view_registered = True
     try:
         synced = await bot.tree.sync()
         print(f"Bot: {bot.user} | Sinhronizētas {len(synced)} komandas")
@@ -350,12 +447,39 @@ async def task(interaction: discord.Interaction):
         previous = {
             "date": pair.get("task_date", ""),
             "task": pair.get("task_text", ""),
+            "category": pair.get("task_category", ""),
             "answers": dict(pair.get("answers", {})),
         }
         if pair.get("task_text"):
             pair.setdefault("history", []).append(previous)
-        choices = [item for item in TASKS if item != pair.get("task_text")]
-        pair["task_text"] = random.choice(choices or TASKS)
+
+        mode = pair.get("task_mode", "random")
+        if mode not in TASKS:
+            mode = "random"
+            pair["task_mode"] = mode
+        if mode == "random":
+            available = [
+                (category, text)
+                for group in TASKS.values()
+                for category, text in group
+            ]
+        else:
+            available = list(TASKS[mode])
+
+        used_tasks = {
+            entry.get("task", "")
+            for entry in pair.get("history", [])
+            if isinstance(entry, dict)
+        }
+        if pair.get("task_text"):
+            used_tasks.add(pair["task_text"])
+        fresh_choices = [item for item in available if item[1] not in used_tasks]
+        choices = fresh_choices or [
+            item for item in available if item[1] != pair.get("task_text")
+        ] or available
+        category, task_text = random.choice(choices)
+        pair["task_category"] = category
+        pair["task_text"] = task_text
         pair["task_date"] = today
         pair["answers"] = {}
         try:
@@ -378,10 +502,14 @@ async def task(interaction: discord.Interaction):
         )
         return
     if is_new_task:
+        mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         await channel.send(
-            f"📅 **Dienas uzdevums — {today}**\n\n"
+            f"📅 **Dienas uzdevums — {today}**\n"
+            f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
+            f"**Režīms:** {mode_label}\n\n"
             f"{pair['task_text']}\n\n"
-            "Katrs iesniedz savu atbildi ar /answer."
+            "Katrs iesniedz savu atbildi ar /answer. Ja uzdevums kādam nav pieņemams, "
+            "izvēlieties citu uzdevumu vai nomainiet režīmu."
         )
         await interaction.response.send_message(
             "Šodienas uzdevums publicēts privātajā kanālā.", ephemeral=True
@@ -391,6 +519,27 @@ async def task(interaction: discord.Interaction):
             f"Šodienas uzdevums jau ir publicēts:\n\n**{pair['task_text']}**",
             ephemeral=True,
         )
+
+
+@bot.tree.command(
+    name="task_mode",
+    description="Izvēlies uzdevumus kopā, attālināti vai nejauši",
+)
+async def task_mode(interaction: discord.Interaction):
+    _, pair = get_pair_for_user(interaction.user.id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Vispirms izveido pāri ar /pair_invite un izmanto sava pāra serveri.",
+            ephemeral=True,
+        )
+        return
+    current_mode = pair.get("task_mode", "random")
+    await interaction.response.send_message(
+        f"Pašreizējais režīms: **{MODE_LABELS.get(current_mode, MODE_LABELS['random'])}**\n"
+        "Izvēlieties režīmu. Tas paliks spēkā, līdz to nomainīsiet.",
+        view=TaskModeView(),
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(
