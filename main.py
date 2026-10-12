@@ -886,6 +886,59 @@ async def answer(
 
 
 @bot.tree.command(
+    name="help",
+    description="Parāda pāru uzdevumu bota komandu sarakstu",
+)
+async def help_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="💞 Pāru uzdevumu bots — palīdzība",
+        description="Komandas, kas palīdz izmantot pāru uzdevumu botu.",
+        color=discord.Color.from_rgb(190, 70, 120),
+    )
+    embed.add_field(
+        name="/pair_invite",
+        value="Uzaicina otru cilvēku izveidot pāri.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/task",
+        value="Parāda vai nosūta šodienas pāra uzdevumu.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/task_mode",
+        value="Ļauj izvēlēties uzdevumu režīmu: kopā, attālināti vai nejauši.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/answer",
+        value="Iesniedz atbildi uz šodienas uzdevumu.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/stats",
+        value="Parāda pāra uzdevumu izpildes statistiku.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/unpair",
+        value="Sāk pāra atvienošanas procesu.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/help",
+        value="Parāda šo palīdzības sarakstu.",
+        inline=False,
+    )
+    embed.set_footer(text="Automātiskais dienas uzdevums tiek nosūtīts plkst. 09.00 pēc Latvijas laika.")
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.tree.command(
     name="stats",
     description="Parāda pāra uzdevumu statistiku",
 )
