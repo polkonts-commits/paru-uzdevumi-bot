@@ -522,10 +522,10 @@ async def publish_automatic_daily_tasks():
         mode_label = MODE_LABELS.get(mode, MODE_LABELS["random"])
         try:
             await channel.send(
-                f"🌅 **Labrīt! Dienas uzdevums — {today}**\\n"
-                f"**Kategorija:** {category}\\n"
-                f"**Režīms:** {mode_label}\\n\\n"
-                f"{task_text}\\n\\n"
+                f"🌅 **Labrīt! Dienas uzdevums — {today}**\n"
+                f"**Kategorija:** {category}\n"
+                f"**Režīms:** {mode_label}\n\n"
+                f"{task_text}\n\n"
                 "Katrs iesniedz savu atbildi ar /answer. Ja uzdevums kādam nav pieņemams, "
                 "izvēlieties citu uzdevumu vai nomainiet režīmu."
             )
