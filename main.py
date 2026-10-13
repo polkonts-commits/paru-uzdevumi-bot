@@ -454,7 +454,9 @@ class PairInvite(discord.ui.View):
                 "Komandas:\n"
                 "• /task — publicē šodienas uzdevumu\n"
                 "• /task_mode — izvēlies kopā, attālināti vai nejauši\n"
-                "• /answer — iesniedz savu atbildi\n"
+                "• /answer — iesniedz rakstisku atbildi, ja uzdevumam tā noder\n"
+                "• /task_proof — pievieno izvēles pierādījumu (foto uzdevumam attēlu)\n"
+                "• Katrs nospiediet uzdevuma ziņā **Atzīmēt izpildītu**\n"
                 "• /stats — apskati izpildītos uzdevumus un dienu sēriju\n"
                 "• /unpair — noņem pāri pēc apstiprinājuma",
                 view=TaskModeView()
