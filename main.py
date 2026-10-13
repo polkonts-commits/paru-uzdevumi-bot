@@ -225,9 +225,12 @@ def today_string():
     return datetime.now(LATVIA_TZ).date().isoformat()
 
 
-def get_pair_for_user(user_id):
+def get_pair_for_user(user_id, guild_id=None):
+    """Atrod lietotāja pāri konkrētajā serverī; serveri ir savstarpēji izolēti."""
     target_id = int(user_id)
     for pair_id, pair in data["pairs"].items():
+        if guild_id is not None and int(pair.get("guild_id", 0)) != int(guild_id):
+            continue
         members = {int(member_id) for member_id in pair.get("members", [])}
         if target_id in members:
             return pair_id, pair
@@ -265,6 +268,7 @@ class CoupleBot(commands.Bot):
         # rather than repeating both operations on every reconnect.
         self.add_view(TaskModeView())
         self.add_view(AnswerView())
+        self.add_view(CreatePairView())
         try:
             synced = await self.tree.sync()
             print(f"Sinhronizētas {len(synced)} Discord komandas")
@@ -273,6 +277,65 @@ class CoupleBot(commands.Bot):
 
 
 bot = CoupleBot(command_prefix="!", intents=intents)
+
+
+class PartnerSelectView(discord.ui.View):
+    """Ephemeral partner picker used by the button and slash command."""
+
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(PartnerSelect())
+
+
+class PartnerSelect(discord.ui.UserSelect):
+    def __init__(self):
+        super().__init__(
+            placeholder="Izvēlies partneri šajā serverī",
+            min_values=1,
+            max_values=1,
+            custom_id="create_pair:partner_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        partner = self.values[0]
+        if not isinstance(partner, discord.Member):
+            await interaction.response.send_message(
+                "Neizdevās atrast šo servera dalībnieku. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+        await send_pair_invite(interaction, partner)
+
+
+class CreatePairView(discord.ui.View):
+    """Persistent welcome-panel button."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Izveidot pāri",
+        emoji="💞",
+        style=discord.ButtonStyle.primary,
+        custom_id="create_pair:start",
+    )
+    async def create_pair(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "Šo pogu var izmantot tikai Discord serverī.", ephemeral=True
+            )
+            return
+        if get_pair_for_user(interaction.user.id, interaction.guild_id)[0]:
+            await interaction.response.send_message(
+                "Tev šajā serverī jau ir aktīvs pāris. Izmanto /unpair, lai to noņemtu.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "Izvēlies Discord servera dalībnieku, kuru uzaicināt pārī:",
+            view=PartnerSelectView(),
+            ephemeral=True,
+        )
 
 
 class PairInvite(discord.ui.View):
@@ -297,32 +360,44 @@ class PairInvite(discord.ui.View):
                 "Šo darbību var veikt tikai Discord serverī.", ephemeral=True
             )
             return
-        if get_pair_for_user(self.inviter.id)[0] or get_pair_for_user(self.invitee.id)[0]:
+        if (
+            get_pair_for_user(self.inviter.id, interaction.guild.id)[0]
+            or get_pair_for_user(self.invitee.id, interaction.guild.id)[0]
+        ):
             await interaction.response.send_message(
-                "Viens no jums jau ir savienots pārī.", ephemeral=True
+                "Viens no jums šajā serverī jau ir savienots pārī.", ephemeral=True
             )
             return
 
         bot_member = interaction.guild.me
-        if bot_member is None or not bot_member.guild_permissions.manage_channels:
+        if (
+            bot_member is None
+            or not bot_member.guild_permissions.manage_channels
+            or not bot_member.guild_permissions.manage_roles
+        ):
             await interaction.response.send_message(
-                "Botam vajadzīga Manage Channels atļauja, lai izveidotu privāto pāra telpu.",
+                "Botam vajadzīgas Manage Channels un Manage Roles atļaujas, lai izveidotu pāra telpu un lomu.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
         category = None
+        couple_role = None
         created_channels = []
         try:
+            couple_role = await interaction.guild.create_role(
+                name=f"Pāris: {self.inviter.display_name} + {self.invitee.display_name}"[:100],
+                mentionable=False,
+                reason="Privātas pāra lomas izveide",
+            )
+            await self.inviter.add_roles(couple_role, reason="Pievienots pāra lomai")
+            await self.invitee.add_roles(couple_role, reason="Pievienots pāra lomai")
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(
                     view_channel=False
                 ),
-                self.inviter: discord.PermissionOverwrite(
-                    view_channel=True, send_messages=True, read_message_history=True
-                ),
-                self.invitee: discord.PermissionOverwrite(
+                couple_role: discord.PermissionOverwrite(
                     view_channel=True, send_messages=True, read_message_history=True
                 ),
                 bot_member: discord.PermissionOverwrite(
@@ -330,6 +405,7 @@ class PairInvite(discord.ui.View):
                     send_messages=True,
                     read_message_history=True,
                     manage_channels=True,
+                    manage_messages=True,
                 ),
             }
             category = await interaction.guild.create_category(
@@ -353,6 +429,7 @@ class PairInvite(discord.ui.View):
                 "guild_id": interaction.guild.id,
                 "members": [self.inviter.id, self.invitee.id],
                 "category_id": category.id,
+                "role_id": couple_role.id,
                 "tasks_channel_id": tasks_channel.id,
                 "history_channel_id": history_channel.id,
                 "task_date": "",
@@ -404,6 +481,11 @@ class PairInvite(discord.ui.View):
                     await category.delete(reason="Neizdevās pabeigt pāra telpas izveidi")
                 except discord.HTTPException:
                     pass
+            if couple_role is not None:
+                try:
+                    await couple_role.delete(reason="Neizdevās pabeigt pāra telpas izveidi")
+                except discord.HTTPException:
+                    pass
             print(f"Pāra telpas izveides kļūda: {error}")
             await interaction.followup.send(
                 "Neizdevās pilnībā izveidot pāra telpu. Pārbaudi bota atļaujas un mēģini vēlreiz.",
@@ -446,6 +528,10 @@ class UnpairConfirmation(discord.ui.View):
             category = await fetch_guild_channel(guild, pair.get("category_id"))
             if category is not None:
                 await category.delete(reason="Pāris noņemts ar /unpair")
+            role_id = pair.get("role_id")
+            role = guild.get_role(int(role_id)) if role_id else None
+            if role is not None:
+                await role.delete(reason="Pāris noņemts ar /unpair")
             data["pairs"].pop(self.pair_id, None)
             save_data()
             await interaction.followup.send(
@@ -481,7 +567,7 @@ class TaskModeView(discord.ui.View):
         super().__init__(timeout=None)
 
     async def set_mode(self, interaction: discord.Interaction, mode: str):
-        _, pair = get_pair_for_user(interaction.user.id)
+        _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
         if not pair or not user_is_in_guild_pair(interaction, pair):
             await interaction.response.send_message(
                 "Šo izvēli var veikt tikai sava pāra privātajā serverī.",
@@ -559,7 +645,7 @@ class AnswerView(discord.ui.View):
     async def answer_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        _, pair = get_pair_for_user(interaction.user.id)
+        _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
         if not pair or not user_is_in_guild_pair(interaction, pair):
             await interaction.response.send_message(
                 "Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.",
@@ -582,7 +668,7 @@ class AnswerView(discord.ui.View):
 
 
 async def submit_answer(interaction: discord.Interaction, answer_text: str):
-    _, pair = get_pair_for_user(interaction.user.id)
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair:
         await interaction.response.send_message(
             "Tev vēl nav izveidots pāris.", ephemeral=True
@@ -814,6 +900,41 @@ async def before_daily_task_scheduler():
     await bot.wait_until_ready()
 
 
+async def post_welcome_panel(guild: discord.Guild):
+    embed = discord.Embed(
+        title="💞 Izveidojiet savu pāri",
+        description=(
+            "Izveidojiet pāri, uzaiciniet partneri un saņemiet privātu vietu ikdienas uzdevumiem.\n\n"
+            "Nospiediet **💞 Izveidot pāri** vai izmantojiet **/izveidot-pari**. "
+            "Partnerim uzaicinājums būs jāpieņem."
+        ),
+        color=discord.Color.from_rgb(190, 70, 120),
+    )
+    candidates = []
+    if guild.system_channel is not None:
+        candidates.append(guild.system_channel)
+    candidates.extend(
+        channel for channel in guild.text_channels if channel not in candidates
+    )
+    for channel in candidates:
+        permissions = channel.permissions_for(guild.me)
+        if permissions.view_channel and permissions.send_messages and permissions.embed_links:
+            try:
+                await channel.send(
+                    embed=embed,
+                    view=CreatePairView(),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                return
+            except discord.HTTPException:
+                continue
+
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    await post_welcome_panel(guild)
+
+
 @bot.event
 async def on_ready():
     if not daily_task_scheduler.is_running():
@@ -821,25 +942,23 @@ async def on_ready():
     print(f"Bot: {bot.user} ir tiešsaistē")
 
 
-@bot.tree.command(
-    name="pair_invite",
-    description="Uzaicini partneri izveidot privātu pāra telpu",
-)
-@app_commands.describe(partner="Cilvēks, kuru vēlies uzaicināt")
-async def pair_invite(interaction: discord.Interaction, partner: discord.Member):
+async def send_pair_invite(interaction: discord.Interaction, partner: discord.Member):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Šo darbību var izmantot tikai Discord serverī.", ephemeral=True
+        )
+        return
     if partner.bot or partner.id == interaction.user.id:
         await interaction.response.send_message(
             "Izvēlies citu cilvēku, nevis botu vai sevi.", ephemeral=True
         )
         return
-    if interaction.guild is None:
+    if (
+        get_pair_for_user(interaction.user.id, interaction.guild_id)[0]
+        or get_pair_for_user(partner.id, interaction.guild_id)[0]
+    ):
         await interaction.response.send_message(
-            "Šo komandu var izmantot tikai Discord serverī.", ephemeral=True
-        )
-        return
-    if get_pair_for_user(interaction.user.id)[0] or get_pair_for_user(partner.id)[0]:
-        await interaction.response.send_message(
-            "Viens no jums jau ir savienots pārī. Vispirms izmantojiet /unpair.",
+            "Viens no jums šajā serverī jau ir savienots pārī. Vispirms izmantojiet /unpair.",
             ephemeral=True,
         )
         return
@@ -851,11 +970,43 @@ async def pair_invite(interaction: discord.Interaction, partner: discord.Member)
 
 
 @bot.tree.command(
+    name="pair_invite",
+    description="Uzaicini partneri izveidot privātu pāra telpu",
+)
+@app_commands.describe(partner="Cilvēks, kuru vēlies uzaicināt")
+async def pair_invite(interaction: discord.Interaction, partner: discord.Member):
+    await send_pair_invite(interaction, partner)
+
+
+@bot.tree.command(
+    name="izveidot-pari",
+    description="Izveido pāri un uzaicini partneri",
+)
+async def izveidot_pari(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Šo komandu var izmantot tikai Discord serverī.", ephemeral=True
+        )
+        return
+    if get_pair_for_user(interaction.user.id, interaction.guild_id)[0]:
+        await interaction.response.send_message(
+            "Tev šajā serverī jau ir aktīvs pāris. Izmanto /unpair, lai to noņemtu.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        "Izvēlies Discord servera dalībnieku, kuru uzaicināt pārī:",
+        view=PartnerSelectView(),
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
     name="task",
     description="Publicē šodienas pāra uzdevumu",
 )
 async def task(interaction: discord.Interaction):
-    _, pair = get_pair_for_user(interaction.user.id)
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair:
         await interaction.response.send_message(
             "Vispirms izveido pāri ar /pair_invite.", ephemeral=True
@@ -968,7 +1119,7 @@ async def task(interaction: discord.Interaction):
     description="Izvēlies uzdevumus kopā, attālināti vai nejauši",
 )
 async def task_mode(interaction: discord.Interaction):
-    _, pair = get_pair_for_user(interaction.user.id)
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair or not user_is_in_guild_pair(interaction, pair):
         await interaction.response.send_message(
             "Vispirms izveido pāri ar /pair_invite un izmanto sava pāra serveri.",
@@ -997,6 +1148,35 @@ async def answer(
 
 
 @bot.tree.command(
+    name="setup",
+    description="Publicē serverī pāru izveides sveiciena ziņojumu",
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def setup_welcome(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Šo komandu var izmantot tikai Discord serverī.", ephemeral=True
+        )
+        return
+    embed = discord.Embed(
+        title="💞 Izveidojiet savu pāri",
+        description=(
+            "Šis bots palīdz pāriem pildīt ikdienas uzdevumus, iesniegt privātas atbildes "
+            "un veidot kopīgu uzdevumu vēsturi.\n\n"
+            "Nospiediet **💞 Izveidot pāri** vai izmantojiet **/izveidot-pari**. "
+            "Partnerim būs jāpieņem uzaicinājums. Pēc tam bots izveidos pāra lomu "
+            "un privātu kategoriju ar dienas uzdevumu un vēstures kanāliem."
+        ),
+        color=discord.Color.from_rgb(190, 70, 120),
+    )
+    await interaction.response.send_message(
+        embed=embed,
+        view=CreatePairView(),
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.tree.command(
     name="help",
     description="Parāda pāru uzdevumu bota komandu sarakstu",
 )
@@ -1007,8 +1187,18 @@ async def help_command(interaction: discord.Interaction):
         color=discord.Color.from_rgb(190, 70, 120),
     )
     embed.add_field(
+        name="/izveidot-pari",
+        value="Atver partnera izvēli un uzaicina viņu izveidot pāri. Pieejama arī poga sveiciena ziņojumā.",
+        inline=False,
+    )
+    embed.add_field(
         name="/pair_invite",
-        value="Uzaicina otru cilvēku izveidot pāri.",
+        value="Alternatīva komanda partnera uzaicināšanai tieši.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/setup",
+        value="Servera administratoram publicē pāra izveides sveiciena ziņojumu.",
         inline=False,
     )
     embed.add_field(
@@ -1054,7 +1244,7 @@ async def help_command(interaction: discord.Interaction):
     description="Parāda pāra uzdevumu statistiku",
 )
 async def stats(interaction: discord.Interaction):
-    _, pair = get_pair_for_user(interaction.user.id)
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair or not user_is_in_guild_pair(interaction, pair):
         await interaction.response.send_message(
             "Vispirms izveido pāri ar /pair_invite un izmanto sava pāra serveri.",
@@ -1080,7 +1270,7 @@ async def stats(interaction: discord.Interaction):
     description="Noņem pāri un tā privātos kanālus",
 )
 async def unpair(interaction: discord.Interaction):
-    pair_id, pair = get_pair_for_user(interaction.user.id)
+    pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair:
         await interaction.response.send_message(
             "Tev nav aktīva pāra, ko noņemt.", ephemeral=True
