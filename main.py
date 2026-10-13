@@ -649,8 +649,8 @@ class PairManagementView(discord.ui.View):
         embed = discord.Embed(
             title="💞 Tavs pāra panelis",
             description=(
-                f"**Partneris:** {partner_name}\\n"
-                f"**🔥 Uzdevumu sērija pēc kārtas:** {streak} dienas\\n"
+                f"**Partneris:** {partner_name}\n"
+                f"**🔥 Uzdevumu sērija pēc kārtas:** {streak} dienas\n"
                 f"**✅ Kopā izpildīti uzdevumi:** {completed}"
             ),
             color=discord.Color.from_rgb(190, 70, 120),
