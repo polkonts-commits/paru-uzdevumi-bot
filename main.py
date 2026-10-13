@@ -438,6 +438,9 @@ class PairInvite(discord.ui.View):
                 "task_category": "",
                 "task_mode": "random",
                 "task_completed": False,
+                "task_type": "general",
+                "task_confirmations": [],
+                "task_proofs": {},
                 "completed_tasks": 0,
                 "streak": 0,
                 "last_completed_date": "",
@@ -632,40 +635,125 @@ class AnswerModal(discord.ui.Modal, title="Atbilde dienas uzdevumam"):
         await submit_answer(interaction, str(self.answer_text))
 
 
+def infer_task_type(task_text: str) -> str:
+    """Nosaka uzdevuma izpildes veidu pēc teksta."""
+    text = task_text.casefold()
+    if any(word in text for word in ("foto", "fotogrāf", "pašbild", "selfij", "attēlu", "bildi")):
+        return "photo"
+    if any(word in text for word in ("videozvan", "sazvan", "zvanā", "zvaniet", "zvanu")):
+        return "call"
+    if any(word in text for word in ("balss ziņ", "audio", "ierakstu")):
+        return "voice"
+    if any(word in text for word in ("nosūtiet", "nosūti", "nosūtīt")):
+        return "message"
+    return "general"
+
+
+def completion_summary(pair: dict) -> str:
+    confirmed = {str(uid) for uid in pair.get("task_confirmations", [])}
+    members = {str(uid) for uid in pair.get("members", [])}
+    return f"{len(confirmed.intersection(members))}/2"
+
+
+async def confirm_task_completion(interaction: discord.Interaction):
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message("Šī darbība pieejama tikai sava pāra dalībniekiem.", ephemeral=True)
+        return
+    today = today_string()
+    if pair.get("task_date") != today or not pair.get("task_text"):
+        await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
+        return
+    confirmations = pair.setdefault("task_confirmations", [])
+    user_key = str(interaction.user.id)
+    if user_key in {str(uid) for uid in confirmations}:
+        await interaction.response.send_message(
+            f"Tavs izpildes apstiprinājums jau ir saglabāts ({completion_summary(pair)}).",
+            ephemeral=True,
+        )
+        return
+    confirmations.append(user_key)
+    try:
+        save_data()
+    except OSError as error:
+        confirmations.remove(user_key)
+        print(f"Neizdevās saglabāt uzdevuma apstiprinājumu: {error}")
+        await interaction.response.send_message("Apstiprinājumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
+        return
+
+    members = {str(uid) for uid in pair.get("members", [])}
+    confirmed = {str(uid) for uid in confirmations}
+    if members.issubset(confirmed) and not pair.get("task_completed", False):
+        pair["task_completed"] = True
+        pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
+        last_date = pair.get("last_completed_date", "")
+        if last_date != today:
+            if last_date:
+                try:
+                    previous_day = datetime.fromisoformat(last_date).date()
+                    current_day = datetime.fromisoformat(today).date()
+                    pair["streak"] = int(pair.get("streak", 0)) + 1 if (current_day - previous_day).days == 1 else 1
+                except ValueError:
+                    pair["streak"] = 1
+            else:
+                pair["streak"] = 1
+            pair["last_completed_date"] = today
+        history_channel = await fetch_guild_channel(interaction.guild, pair.get("history_channel_id"))
+        if history_channel is not None and hasattr(history_channel, "send"):
+            proof_lines = [
+                f"<@{uid}> pievienotais pierādījums: {proof['url']}"
+                for uid, proof in pair.get("task_proofs", {}).items()
+                if isinstance(proof, dict) and proof.get("url")
+            ]
+            extra = "\\n" + "\\n".join(proof_lines) if proof_lines else ""
+            try:
+                await history_channel.send(
+                    f"✅ **Uzdevums izpildīts — {today}**\\n"
+                    f"**Uzdevums:** {pair.get('task_text', '')}\\n"
+                    f"**Veids:** {pair.get('task_type', 'general')}\\n"
+                    f"Abi partneri apstiprināja izpildi.{extra}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except discord.HTTPException as error:
+                print(f"Uzdevums izpildīts, bet vēsturi neizdevās publicēt: {error}")
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt uzdevuma izpildi: {error}")
+        await interaction.response.send_message(
+            f"🎉 Abi partneri apstiprināja uzdevuma izpildi! Kopā izpildīti: {pair.get('completed_tasks', 0)}; "
+            f"sērija: {pair.get('streak', 0)} dienas.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        f"Apstiprinājums saglabāts. Izpildi apstiprinājuši **{completion_summary(pair)}** partneri. "
+        "Uzdevums būs pabeigts, kad apstiprināsiet abi.",
+        ephemeral=True,
+    )
+
+
 class AnswerView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="Atbildēt",
-        emoji="✍️",
-        style=discord.ButtonStyle.primary,
-        custom_id="daily_task:answer",
-    )
-    async def answer_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Atbildēt", emoji="✍️", style=discord.ButtonStyle.primary, custom_id="daily_task:answer")
+    async def answer_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
         if not pair or not user_is_in_guild_pair(interaction, pair):
-            await interaction.response.send_message(
-                "Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.", ephemeral=True)
             return
         if pair.get("task_date") != today_string() or not pair.get("task_text"):
-            await interaction.response.send_message(
-                "Šis vairs nav aktuālais dienas uzdevums. Atver jaunāko uzdevumu.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Šis vairs nav aktuālais dienas uzdevums. Atver jaunāko uzdevumu.", ephemeral=True)
             return
         if str(interaction.user.id) in pair.get("answers", {}):
-            await interaction.response.send_message(
-                "Tava atbilde šodien jau ir saglabāta. Otrā atbilde vēl tiek gaidīta.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Tava atbilde šodien jau ir saglabāta. Otrā atbilde vēl tiek gaidīta.", ephemeral=True)
             return
         await interaction.response.send_modal(AnswerModal())
 
+    @discord.ui.button(label="Atzīmēt izpildītu", emoji="✅", style=discord.ButtonStyle.success, custom_id="daily_task:confirm")
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await confirm_task_completion(interaction)
 
 async def submit_answer(interaction: discord.Interaction, answer_text: str):
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
@@ -706,31 +794,6 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
             ephemeral=True,
         )
         return
-
-    if len(answers) >= 2 and not pair.get("task_completed", False):
-        pair["task_completed"] = True
-        pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
-        last_date = pair.get("last_completed_date", "")
-        if last_date == today:
-            pass
-        elif last_date:
-            try:
-                previous_day = datetime.fromisoformat(last_date).date()
-                current_day = datetime.fromisoformat(today).date()
-                pair["streak"] = (
-                    int(pair.get("streak", 0)) + 1
-                    if (current_day - previous_day).days == 1
-                    else 1
-                )
-            except ValueError:
-                pair["streak"] = 1
-        else:
-            pair["streak"] = 1
-        pair["last_completed_date"] = today
-        try:
-            save_data()
-        except OSError as error:
-            print(f"Neizdevās saglabāt uzdevuma izpildi: {error}")
 
     if len(answers) >= 2 and pair.get("task_revealed_date") != today:
         history_channel = await fetch_guild_channel(
@@ -856,6 +919,9 @@ async def publish_automatic_daily_tasks():
             pair["task_date"] = today
             pair["task_sent_date"] = ""
             pair["task_completed"] = False
+            pair["task_type"] = infer_task_type(task_text)
+            pair["task_confirmations"] = []
+            pair["task_proofs"] = {}
             pair["answers"] = {}
             try:
                 save_data()
@@ -871,9 +937,10 @@ async def publish_automatic_daily_tasks():
                 f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
                 f"**Režīms:** {mode_label}\n\n"
                 f"{pair.get('task_text', '')}\n\n"
-                "Katrs nospiediet **Atbildēt** un iesniedziet savu atbildi. Atbildes būs redzamas "
-                "abos kopā tikai pēc tam, kad abi būs atbildējuši. Ja uzdevums kādam nav pieņemams, "
-                "izvēlieties citu uzdevumu vai nomainiet režīmu.",
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
+                "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
+                "videozvanam pietiek ar abu apstiprinājumu.",
                 view=AnswerView(),
             )
         except discord.HTTPException as error:
@@ -1073,6 +1140,9 @@ async def task(interaction: discord.Interaction):
         pair["task_text"] = task_text
         pair["task_date"] = today
         pair["task_completed"] = False
+        pair["task_type"] = infer_task_type(task_text)
+        pair["task_confirmations"] = []
+        pair["task_proofs"] = {}
         pair["answers"] = {}
         try:
             save_data()
@@ -1101,9 +1171,10 @@ async def task(interaction: discord.Interaction):
                 f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
                 f"**Režīms:** {mode_label}\n\n"
                 f"{pair['task_text']}\n\n"
-                "Katrs nospiediet **Atbildēt** un iesniedziet savu atbildi. Atbildes būs redzamas "
-                "abos kopā tikai pēc tam, kad abi būs atbildējuši. Ja uzdevums kādam nav pieņemams, "
-                "izvēlieties citu uzdevumu vai nomainiet režīmu.",
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
+                "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
+                "videozvanam pietiek ar abu apstiprinājumu.",
                 view=AnswerView(),
             )
         except discord.HTTPException as error:
@@ -1159,6 +1230,45 @@ async def answer(
     teksts: app_commands.Range[str, 1, 1000],
 ):
     await submit_answer(interaction, str(teksts))
+
+
+@bot.tree.command(name="task_proof", description="Pievieno izvēles pierādījumu šodienas uzdevumam")
+@app_commands.describe(fails="Izvēles attēls, audio vai cits pierādījums")
+async def task_proof(interaction: discord.Interaction, fails: discord.Attachment):
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message("Šo komandu vari izmantot tikai sava pāra dalībnieks.", ephemeral=True)
+        return
+    if pair.get("task_date") != today_string() or not pair.get("task_text"):
+        await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
+        return
+    task_type = pair.get("task_type") or infer_task_type(pair.get("task_text", ""))
+    if task_type == "photo" and not (fails.content_type or "").startswith("image/"):
+        await interaction.response.send_message("Šim foto uzdevumam pievieno attēla failu.", ephemeral=True)
+        return
+    proofs = pair.setdefault("task_proofs", {})
+    user_key = str(interaction.user.id)
+    old_proof = proofs.get(user_key)
+    proofs[user_key] = {
+        "url": fails.url,
+        "filename": fails.filename,
+        "content_type": fails.content_type or "",
+        "uploaded_at": datetime.now(LATVIA_TZ).isoformat(),
+    }
+    try:
+        save_data()
+    except OSError as error:
+        if old_proof is None:
+            proofs.pop(user_key, None)
+        else:
+            proofs[user_key] = old_proof
+        print(f"Neizdevās saglabāt uzdevuma pierādījumu: {error}")
+        await interaction.response.send_message("Pierādījumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"Pierādījums pievienots uzdevumam **{task_type}**. Tas nav publiskots ārpus jūsu privātās pāra telpas.",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(
@@ -1243,6 +1353,11 @@ async def help_command(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
+        name="/task_proof",
+        value="Pievieno izvēles pierādījumu; foto uzdevumiem pieņem attēlu.",
+        inline=False,
+    )
+    embed.add_field(
         name="/stats",
         value="Parāda pāra uzdevumu izpildes statistiku.",
         inline=False,
@@ -1281,12 +1396,14 @@ async def stats(interaction: discord.Interaction):
     streak = int(pair.get("streak", 0))
     last_date = pair.get("last_completed_date") or "Pagaidām nav"
     answers = pair.get("answers", {})
+    confirmations = completion_summary(pair)
     await interaction.response.send_message(
         f"📊 **Jūsu pāra statistika**\n"
         f"✅ Kopā izpildīti uzdevumi: **{completed}**\n"
         f"🔥 Pašreizējā dienu sērija: **{streak}**\n"
         f"📅 Pēdējais izpildītais uzdevums: **{last_date}**\n"
-        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**",
+        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**\\n"
+        f"☑️ Šodien izpildi apstiprinājuši: **{confirmations}**",
         ephemeral=True,
     )
 
