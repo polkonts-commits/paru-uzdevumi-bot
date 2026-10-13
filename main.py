@@ -625,9 +625,23 @@ class PrivacyConsentView(discord.ui.View):
             )
             return
         pair = data["pairs"].get(self.pair_id)
-        if not pair or not user_is_in_guild_pair(interaction, pair):
+        is_member = bool(
+            pair
+            and int(interaction.user.id) in {
+                int(member_id) for member_id in pair.get("members", [])
+            }
+        )
+        same_guild = bool(
+            pair
+            and (
+                interaction.guild_id is None
+                or int(interaction.guild_id) == int(pair.get("guild_id", 0))
+            )
+        )
+        if not pair or not is_member or not same_guild:
             await interaction.response.send_message(
-                "Pāris nav atrasts šajā serverī.", ephemeral=True
+                "Pāris nav atrasts vai šī piekrišana nav paredzēta tev.",
+                ephemeral=True,
             )
             return
         acknowledgements = {
