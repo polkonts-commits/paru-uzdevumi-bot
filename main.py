@@ -911,6 +911,9 @@ async def publish_automatic_daily_tasks():
                     "task": pair.get("task_text", ""),
                     "category": pair.get("task_category", ""),
                     "answers": dict(pair.get("answers", {})),
+                    "confirmations": list(pair.get("task_confirmations", [])),
+                    "proofs": dict(pair.get("task_proofs", {})),
+                    "completed": bool(pair.get("task_completed", False)),
                 })
 
             category, task_text = random.choice(choices)
@@ -1107,6 +1110,9 @@ async def task(interaction: discord.Interaction):
             "task": pair.get("task_text", ""),
             "category": pair.get("task_category", ""),
             "answers": dict(pair.get("answers", {})),
+                    "confirmations": list(pair.get("task_confirmations", [])),
+                    "proofs": dict(pair.get("task_proofs", {})),
+                    "completed": bool(pair.get("task_completed", False)),
         }
         if pair.get("task_text"):
             pair.setdefault("history", []).append(previous)
