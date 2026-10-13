@@ -1023,7 +1023,7 @@ async def help_command(interaction: discord.Interaction):
     )
     embed.add_field(
         name="/answer",
-        value="Iesniedz atbildi uz šodienas uzdevumu.",
+        value="Iesniedz atbildi privāti. Dienas uzdevumā vari arī nospiest pogu Atbildēt; atbildes tiek parādītas tikai pēc abu atbilžu saņemšanas.",
         inline=False,
     )
     embed.add_field(
