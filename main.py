@@ -904,9 +904,23 @@ async def post_welcome_panel(guild: discord.Guild):
     embed = discord.Embed(
         title="💞 Izveidojiet savu pāri",
         description=(
-            "Izveidojiet pāri, uzaiciniet partneri un saņemiet privātu vietu ikdienas uzdevumiem.\n\n"
-            "Nospiediet **💞 Izveidot pāri** vai izmantojiet **/izveidot-pari**. "
-            "Partnerim uzaicinājums būs jāpieņem."
+            "**Mazie ikdienas soļi veido stiprākas attiecības! ❤️**\n\n"
+            "Vēlaties labāk iepazīt viens otru, vairāk sarunāties un kopā radīt skaistas atmiņas? "
+            "Bots palīdzēs to darīt katru dienu — arī tad, ja esat tālu viens no otra.\n\n"
+            "**💗 Kā sākt?**\n"
+            "1. Nospiediet **💞 Izveidot pāri**.\n"
+            "2. Izvēlieties partneri.\n"
+            "3. Partneris pieņem uzaicinājumu.\n"
+            "4. Bots izveido jūsu pārim privātu vietu.\n"
+            "5. Katru dienu saņemiet kopīgu uzdevumu un izpildiet to abi!\n\n"
+            "**🔐 Jūsu privātā vieta**\n"
+            "💌 Ikdienas uzdevumi jums abiem.\n"
+            "💬 Atbildiet uzdevumam privātajā kanālā.\n"
+            "📚 Saglabājiet kopīgo uzdevumu vēsturi.\n"
+            "❤️ Atklājiet viens otra domas un veidojiet ciešāku saikni.\n\n"
+            "**Svarīgi:** katram lietotājam vienā serverī var būt tikai viens aktīvs pāris. "
+            "Uzaicinājums jāapstiprina abiem partneriem.\n\n"
+            "*Viens uzdevums dienā. Divi cilvēki. Vairāk tuvības.* 💞"
         ),
         color=discord.Color.from_rgb(190, 70, 120),
     )
@@ -1161,11 +1175,23 @@ async def setup_welcome(interaction: discord.Interaction):
     embed = discord.Embed(
         title="💞 Izveidojiet savu pāri",
         description=(
-            "Šis bots palīdz pāriem pildīt ikdienas uzdevumus, iesniegt privātas atbildes "
-            "un veidot kopīgu uzdevumu vēsturi.\n\n"
-            "Nospiediet **💞 Izveidot pāri** vai izmantojiet **/izveidot-pari**. "
-            "Partnerim būs jāpieņem uzaicinājums. Pēc tam bots izveidos pāra lomu "
-            "un privātu kategoriju ar dienas uzdevumu un vēstures kanāliem."
+            "**Mazie ikdienas soļi veido stiprākas attiecības! ❤️**\n\n"
+            "Vēlaties labāk iepazīt viens otru, vairāk sarunāties un kopā radīt skaistas atmiņas? "
+            "Bots palīdzēs to darīt katru dienu — arī tad, ja esat tālu viens no otra.\n\n"
+            "**💗 Kā sākt?**\n"
+            "1. Nospiediet **💞 Izveidot pāri**.\n"
+            "2. Izvēlieties partneri.\n"
+            "3. Partneris pieņem uzaicinājumu.\n"
+            "4. Bots izveido jūsu pārim privātu vietu.\n"
+            "5. Katru dienu saņemiet kopīgu uzdevumu un izpildiet to abi!\n\n"
+            "**🔐 Jūsu privātā vieta**\n"
+            "💌 Ikdienas uzdevumi jums abiem.\n"
+            "💬 Atbildiet uzdevumam privātajā kanālā.\n"
+            "📚 Saglabājiet kopīgo uzdevumu vēsturi.\n"
+            "❤️ Atklājiet viens otra domas un veidojiet ciešāku saikni.\n\n"
+            "**Svarīgi:** katram lietotājam vienā serverī var būt tikai viens aktīvs pāris. "
+            "Uzaicinājums jāapstiprina abiem partneriem.\n\n"
+            "*Viens uzdevums dienā. Divi cilvēki. Vairāk tuvības.* 💞"
         ),
         color=discord.Color.from_rgb(190, 70, 120),
     )
