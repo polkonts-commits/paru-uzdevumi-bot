@@ -1246,11 +1246,29 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
     if task_type == "photo" and not (fails.content_type or "").startswith("image/"):
         await interaction.response.send_message("Šim foto uzdevumam pievieno attēla failu.", ephemeral=True)
         return
+
+    channel = await fetch_guild_channel(interaction.guild, pair.get("tasks_channel_id"))
+    if channel is None or not hasattr(channel, "send"):
+        await interaction.response.send_message("Pāra uzdevumu kanāls nav pieejams pierādījuma pievienošanai.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        proof_message = await channel.send(
+            content=f"📎 Pierādījums no <@{interaction.user.id}> uzdevumam: {pair.get('task_text', '')[:150]}",
+            file=await fails.to_file(),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except (discord.HTTPException, OSError) as error:
+        print(f"Neizdevās ievietot pierādījumu pāra kanālā: {error}")
+        await interaction.followup.send("Pierādījumu neizdevās pievienot pāra kanālam. Mēģini vēlreiz.", ephemeral=True)
+        return
+
     proofs = pair.setdefault("task_proofs", {})
     user_key = str(interaction.user.id)
     old_proof = proofs.get(user_key)
     proofs[user_key] = {
-        "url": fails.url,
+        "url": proof_message.attachments[0].url if proof_message.attachments else "",
+        "message_id": proof_message.id,
         "filename": fails.filename,
         "content_type": fails.content_type or "",
         "uploaded_at": datetime.now(LATVIA_TZ).isoformat(),
@@ -1263,10 +1281,10 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
         else:
             proofs[user_key] = old_proof
         print(f"Neizdevās saglabāt uzdevuma pierādījumu: {error}")
-        await interaction.response.send_message("Pierādījumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
+        await interaction.followup.send("Pierādījums pievienots kanālam, bet tā statuss netika saglabāts. Mēģini vēlreiz.", ephemeral=True)
         return
-    await interaction.response.send_message(
-        f"Pierādījums pievienots uzdevumam **{task_type}**. Tas nav publiskots ārpus jūsu privātās pāra telpas.",
+    await interaction.followup.send(
+        "Pierādījums pievienots jūsu privātajā pāra kanālā; tas nav publicēts citur.",
         ephemeral=True,
     )
 
