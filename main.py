@@ -705,12 +705,12 @@ async def confirm_task_completion(interaction: discord.Interaction):
                 for uid, proof in pair.get("task_proofs", {}).items()
                 if isinstance(proof, dict) and proof.get("url")
             ]
-            extra = "\\n" + "\\n".join(proof_lines) if proof_lines else ""
+            extra = "\n" + "\n".join(proof_lines) if proof_lines else ""
             try:
                 await history_channel.send(
-                    f"✅ **Uzdevums izpildīts — {today}**\\n"
-                    f"**Uzdevums:** {pair.get('task_text', '')}\\n"
-                    f"**Veids:** {pair.get('task_type', 'general')}\\n"
+                    f"✅ **Uzdevums izpildīts — {today}**\n"
+                    f"**Uzdevums:** {pair.get('task_text', '')}\n"
+                    f"**Veids:** {pair.get('task_type', 'general')}\n"
                     f"Abi partneri apstiprināja izpildi.{extra}",
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
@@ -937,7 +937,7 @@ async def publish_automatic_daily_tasks():
                 f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
                 f"**Režīms:** {mode_label}\n\n"
                 f"{pair.get('task_text', '')}\n\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
                 "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
                 "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
                 "videozvanam pietiek ar abu apstiprinājumu.",
@@ -1171,7 +1171,7 @@ async def task(interaction: discord.Interaction):
                 f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
                 f"**Režīms:** {mode_label}\n\n"
                 f"{pair['task_text']}\n\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
                 "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
                 "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
                 "videozvanam pietiek ar abu apstiprinājumu.",
@@ -1402,7 +1402,7 @@ async def stats(interaction: discord.Interaction):
         f"✅ Kopā izpildīti uzdevumi: **{completed}**\n"
         f"🔥 Pašreizējā dienu sērija: **{streak}**\n"
         f"📅 Pēdējais izpildītais uzdevums: **{last_date}**\n"
-        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**\\n"
+        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**\n"
         f"☑️ Šodien izpildi apstiprinājuši: **{confirmations}**",
         ephemeral=True,
     )
