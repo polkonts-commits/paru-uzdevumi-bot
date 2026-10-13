@@ -269,6 +269,7 @@ class CoupleBot(commands.Bot):
         self.add_view(TaskModeView())
         self.add_view(AnswerView())
         self.add_view(CreatePairView())
+        self.add_view(PairManagementView())
         try:
             synced = await self.tree.sync()
             print(f"Sinhronizētas {len(synced)} Discord komandas")
@@ -563,6 +564,103 @@ class UnpairConfirmation(discord.ui.View):
             content="Pāra noņemšana atcelta.", view=None
         )
         self.stop()
+
+
+class PairManagementActions(discord.ui.View):
+    """Private actions shown after opening the public pair panel."""
+
+    def __init__(self, pair_id, requester_id):
+        super().__init__(timeout=300)
+        self.pair_id = pair_id
+        self.requester_id = requester_id
+
+    @discord.ui.button(
+        label="Atvienot pāri",
+        emoji="💔",
+        style=discord.ButtonStyle.danger,
+        custom_id="pair_management:unpair",
+    )
+    async def unpair(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "Šo paneli var izmantot tikai persona, kura to atvēra.",
+                ephemeral=True,
+            )
+            return
+        pair = data["pairs"].get(self.pair_id)
+        if not pair or not user_is_in_guild_pair(interaction, pair):
+            await interaction.response.send_message(
+                "Aktīvs pāris vairs nav atrasts šajā serverī.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "Vai tiešām vēlies atvienot pāri? Tiks dzēsti pāra privātie kanāli un bota saglabātā vēsture.",
+            view=UnpairConfirmation(self.pair_id, interaction.user.id),
+            ephemeral=True,
+        )
+
+
+class PairManagementView(discord.ui.View):
+    """Persistent public button that opens a user-specific private panel."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Atvērt pāra paneli",
+        emoji="💞",
+        style=discord.ButtonStyle.primary,
+        custom_id="pair_management:open",
+    )
+    async def open_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None or interaction.guild_id is None:
+            await interaction.response.send_message(
+                "Šo pogu var izmantot tikai Discord serverī.",
+                ephemeral=True,
+            )
+            return
+
+        pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+        if not pair:
+            await interaction.response.send_message(
+                "Tev šajā serverī vēl nav pāra. Vari izveidot pāri un uzaicināt partneri.",
+                view=CreatePairView(),
+                ephemeral=True,
+            )
+            return
+
+        if not user_is_in_guild_pair(interaction, pair):
+            await interaction.response.send_message(
+                "Neizdevās pārbaudīt pāra statusu. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+
+        partner_id = next(
+            (int(member_id) for member_id in pair.get("members", [])
+             if int(member_id) != int(interaction.user.id)),
+            None,
+        )
+        partner = interaction.guild.get_member(partner_id) if partner_id else None
+        partner_name = partner.display_name if partner else (f"<@{partner_id}>" if partner_id else "Nav atrasts")
+        streak = int(pair.get("streak", 0))
+        completed = int(pair.get("completed_tasks", 0))
+        embed = discord.Embed(
+            title="💞 Tavs pāra panelis",
+            description=(
+                f"**Partneris:** {partner_name}\\n"
+                f"**🔥 Uzdevumu sērija pēc kārtas:** {streak} dienas\\n"
+                f"**✅ Kopā izpildīti uzdevumi:** {completed}"
+            ),
+            color=discord.Color.from_rgb(190, 70, 120),
+        )
+        await interaction.response.send_message(
+            embed=embed,
+            view=PairManagementActions(pair_id, interaction.user.id),
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 class TaskModeView(discord.ui.View):
@@ -980,11 +1078,11 @@ async def post_welcome_panel(guild: discord.Guild):
             "Vēlaties labāk iepazīt viens otru, vairāk sarunāties un kopā radīt skaistas atmiņas? "
             "Bots palīdzēs to darīt katru dienu — arī tad, ja esat tālu viens no otra.\n\n"
             "**💗 Kā sākt?**\n"
-            "1. Nospiediet **💞 Izveidot pāri**.\n"
-            "2. Izvēlieties partneri.\n"
-            "3. Partneris pieņem uzaicinājumu.\n"
-            "4. Bots izveido jūsu pārim privātu vietu.\n"
-            "5. Katru dienu saņemiet kopīgu uzdevumu un izpildiet to abi!\n\n"
+            "1. Nospiediet **💞 Atvērt pāra paneli**.\n"
+            "2. Ja jums vēl nav pāra, izvēlieties **Izveidot pāri**.\n"
+            "3. Izvēlieties partneri un sagaidiet uzaicinājuma apstiprinājumu.\n"
+            "4. Bots izveidos jūsu pārim privātu vietu.\n"
+            "5. Ja jums jau ir pāris, panelī redzēsiet statistiku un atvienošanas iespēju.\n\n"
             "**🔐 Jūsu privātā vieta**\n"
             "💌 Ikdienas uzdevumi jums abiem.\n"
             "💬 Atbildiet uzdevumam privātajā kanālā.\n"
@@ -1008,7 +1106,7 @@ async def post_welcome_panel(guild: discord.Guild):
             try:
                 await channel.send(
                     embed=embed,
-                    view=CreatePairView(),
+                    view=PairManagementView(),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
                 return
@@ -1315,11 +1413,11 @@ async def setup_welcome(interaction: discord.Interaction):
             "Vēlaties labāk iepazīt viens otru, vairāk sarunāties un kopā radīt skaistas atmiņas? "
             "Bots palīdzēs to darīt katru dienu — arī tad, ja esat tālu viens no otra.\n\n"
             "**💗 Kā sākt?**\n"
-            "1. Nospiediet **💞 Izveidot pāri**.\n"
-            "2. Izvēlieties partneri.\n"
-            "3. Partneris pieņem uzaicinājumu.\n"
-            "4. Bots izveido jūsu pārim privātu vietu.\n"
-            "5. Katru dienu saņemiet kopīgu uzdevumu un izpildiet to abi!\n\n"
+            "1. Nospiediet **💞 Atvērt pāra paneli**.\n"
+            "2. Ja jums vēl nav pāra, izvēlieties **Izveidot pāri**.\n"
+            "3. Izvēlieties partneri un sagaidiet uzaicinājuma apstiprinājumu.\n"
+            "4. Bots izveidos jūsu pārim privātu vietu.\n"
+            "5. Ja jums jau ir pāris, panelī redzēsiet statistiku un atvienošanas iespēju.\n\n"
             "**🔐 Jūsu privātā vieta**\n"
             "💌 Ikdienas uzdevumi jums abiem.\n"
             "💬 Atbildiet uzdevumam privātajā kanālā.\n"
@@ -1333,7 +1431,7 @@ async def setup_welcome(interaction: discord.Interaction):
     )
     await interaction.response.send_message(
         embed=embed,
-        view=CreatePairView(),
+        view=PairManagementView(),
         allowed_mentions=discord.AllowedMentions.none(),
     )
 
