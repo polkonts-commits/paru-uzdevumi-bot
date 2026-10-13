@@ -279,6 +279,65 @@ class CoupleBot(commands.Bot):
 bot = CoupleBot(command_prefix="!", intents=intents)
 
 
+class PartnerSelectView(discord.ui.View):
+    """Ephemeral partner picker used by the button and slash command."""
+
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(PartnerSelect())
+
+
+class PartnerSelect(discord.ui.UserSelect):
+    def __init__(self):
+        super().__init__(
+            placeholder="Izvēlies partneri šajā serverī",
+            min_values=1,
+            max_values=1,
+            custom_id="create_pair:partner_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        partner = self.values[0]
+        if not isinstance(partner, discord.Member):
+            await interaction.response.send_message(
+                "Neizdevās atrast šo servera dalībnieku. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+        await send_pair_invite(interaction, partner)
+
+
+class CreatePairView(discord.ui.View):
+    """Persistent welcome-panel button."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Izveidot pāri",
+        emoji="💞",
+        style=discord.ButtonStyle.primary,
+        custom_id="create_pair:start",
+    )
+    async def create_pair(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "Šo pogu var izmantot tikai Discord serverī.", ephemeral=True
+            )
+            return
+        if get_pair_for_user(interaction.user.id, interaction.guild_id)[0]:
+            await interaction.response.send_message(
+                "Tev šajā serverī jau ir aktīvs pāris. Izmanto /unpair, lai to noņemtu.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "Izvēlies Discord servera dalībnieku, kuru uzaicināt pārī:",
+            view=PartnerSelectView(),
+            ephemeral=True,
+        )
+
+
 class PairInvite(discord.ui.View):
     def __init__(self, inviter, invitee):
         super().__init__(timeout=86400)
