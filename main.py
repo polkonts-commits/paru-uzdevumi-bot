@@ -429,6 +429,7 @@ class PairInvite(discord.ui.View):
             data["pairs"][pair_id] = {
                 "guild_id": interaction.guild.id,
                 "members": [self.inviter.id, self.invitee.id],
+                "privacy_acknowledgements": [],
                 "category_id": category.id,
                 "role_id": couple_role.id,
                 "tasks_channel_id": tasks_channel.id,
@@ -452,6 +453,9 @@ class PairInvite(discord.ui.View):
             await tasks_channel.send(
                 f"Sveicināti, {self.inviter.mention} un {self.invitee.mention}! ❤️\n"
                 "Jūsu privātā pāra telpa ir gatava.\n\n"
+                f"{PRIVACY_NOTICE}\n\n"
+                "Katram partnerim privāti jāizlasa brīdinājums un jānospiež **Piekrītu**. "
+                "Līdz abu piekrišanai dienas uzdevumus nevarēs sākt.\n\n"
                 "Komandas:\n"
                 "• /task — publicē šodienas uzdevumu\n"
                 "• /task_mode — izvēlies kopā, attālināti vai nejauši\n"
@@ -466,9 +470,23 @@ class PairInvite(discord.ui.View):
                 "📚 Šeit glabāsies iepriekšējo uzdevumu un atbilžu vēsture."
             )
             await interaction.followup.send(
-                "Uzaicinājums pieņemts! Jūsu privātā telpa ir izveidota.",
+                f"{PRIVACY_NOTICE}\n\nLai turpinātu, izlasi brīdinājumu un nospied **Piekrītu**.",
+                view=PrivacyConsentView(pair_id, self.invitee.id),
                 ephemeral=True,
             )
+            try:
+                await self.inviter.send(
+                    f"Jūsu pāris ar {self.invitee.display_name} ir izveidots.\n\n"
+                    f"{PRIVACY_NOTICE}\n\nLai sāktu izmantot pāra botu, nospied **Piekrītu**.",
+                    view=PrivacyConsentView(pair_id, self.inviter.id),
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                await tasks_channel.send(
+                    f"{self.inviter.mention}, tev vēl jāapstiprina privātuma brīdinājums. "
+                    "Atver šo ziņojumu un nospied **Piekrītu**.",
+                    view=PrivacyConsentView(pair_id, self.inviter.id),
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
             self.stop()
         except (discord.HTTPException, OSError) as error:
             if category is not None:
@@ -564,6 +582,77 @@ class UnpairConfirmation(discord.ui.View):
             content="Pāra noņemšana atcelta.", view=None
         )
         self.stop()
+
+
+PRIVACY_NOTICE = (
+    "🔐 **SVARĪGS PRIVĀTUMA BRĪDINĀJUMS**\n\n"
+    "Jūsu pāra kanāli ir paredzēti jums abiem, un parastie servera dalībnieki tos neredz. "
+    "**Servera administratori un personas ar atbilstošām Discord atļaujām var piekļūt "
+    "kanāliem un apskatīt tajos ievietoto saturu.**\n\n"
+    "Esiet uzmanīgi ar personiskām ziņām, privātām fotogrāfijām un video, intīmu vai "
+    "sensitīvu informāciju. Neievietojiet saturu, kuru nevēlaties atklāt servera "
+    "administratoriem. Kanālu privātums negarantē aizsardzību pret administratīvu piekļuvi."
+)
+
+
+def privacy_fully_acknowledged(pair):
+    members = {int(member_id) for member_id in pair.get("members", [])}
+    acknowledged = {
+        int(member_id) for member_id in pair.get("privacy_acknowledgements", [])
+    }
+    return bool(members) and members.issubset(acknowledged)
+
+
+class PrivacyConsentView(discord.ui.View):
+    """Requires each partner to acknowledge the privacy notice individually."""
+
+    def __init__(self, pair_id, intended_user_id):
+        super().__init__(timeout=None)
+        self.pair_id = str(pair_id)
+        self.intended_user_id = int(intended_user_id)
+
+    @discord.ui.button(
+        label="Piekrītu",
+        emoji="✅",
+        style=discord.ButtonStyle.success,
+        custom_id="privacy_consent:agree",
+    )
+    async def agree(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if int(interaction.user.id) != self.intended_user_id:
+            await interaction.response.send_message(
+                "Šo piekrišanu var apstiprināt tikai tai paredzētais pāra dalībnieks.",
+                ephemeral=True,
+            )
+            return
+        pair = data["pairs"].get(self.pair_id)
+        if not pair or not user_is_in_guild_pair(interaction, pair):
+            await interaction.response.send_message(
+                "Pāris nav atrasts šajā serverī.", ephemeral=True
+            )
+            return
+        acknowledgements = {
+            int(member_id) for member_id in pair.get("privacy_acknowledgements", [])
+        }
+        acknowledgements.add(int(interaction.user.id))
+        pair["privacy_acknowledgements"] = sorted(acknowledgements)
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt privātuma piekrišanu: {error}")
+            await interaction.response.send_message(
+                "Piekrišanu neizdevās saglabāt. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+
+        if privacy_fully_acknowledged(pair):
+            status = "Abi partneri ir apstiprinājuši privātuma brīdinājumu. Varat sākt izmantot pāra botu."
+        else:
+            status = "Tava piekrišana ir saglabāta. Otram partnerim vēl jāizlasa brīdinājums un jānospiež **Piekrītu**."
+        await interaction.response.edit_message(
+            content=f"{PRIVACY_NOTICE}\n\n✅ {status}",
+            view=None,
+        )
 
 
 class PairManagementActions(discord.ui.View):
@@ -1199,6 +1288,13 @@ async def task(interaction: discord.Interaction):
     if not user_is_in_guild_pair(interaction, pair):
         await interaction.response.send_message(
             "Izmanto šo komandu savā pāra Discord serverī.", ephemeral=True
+        )
+        return
+    if not privacy_fully_acknowledged(pair):
+        await interaction.response.send_message(
+            "Pirms uzdevumu sākšanas abiem partneriem jāizlasa privātuma brīdinājums un jānospiež **Piekrītu**. "
+            "Brīdinājums ir pieejams jūsu privātajā pāra kanālā.",
+            ephemeral=True,
         )
         return
 
