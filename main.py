@@ -1021,9 +1021,9 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
                 member.display_name if member is not None else f"Dalībnieks {member_id}"
             )
         lines = [
-            f"✍️ **{member_names.get(member_id, 'Dalībnieks')}**\n{answers[member_id]}"
+            f"✍️ **{member_names.get(str(member_id), 'Dalībnieks')}**\n{answers[str(member_id)]}"
             for member_id in pair.get("members", [])
-            if member_id in answers
+            if str(member_id) in answers
         ]
         try:
             await history_channel.send(
