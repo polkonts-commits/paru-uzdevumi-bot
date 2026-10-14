@@ -1060,6 +1060,89 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
     )
 
 
+@bot.tree.command(
+    name="izvilkt_atbildes",
+    description="Piespiedu kārtā publicē saglabātās abu partneru atbildes",
+)
+async def izvilkt_atbildes(interaction: discord.Interaction):
+    """Atjauno atbilžu publicēšanu no pašreiz datu failā saglabātajām atbildēm."""
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Šo komandu var izmantot tikai sava pāra serverī.", ephemeral=True
+        )
+        return
+
+    members = [str(member_id) for member_id in pair.get("members", [])]
+    answers = pair.get("answers", {})
+    saved_answers = {
+        member_id: answers.get(member_id, answers.get(int(member_id), None))
+        for member_id in members
+    }
+    saved_answers = {
+        member_id: answer for member_id, answer in saved_answers.items()
+        if isinstance(answer, str) and answer.strip()
+    }
+
+    if len(saved_answers) < 2:
+        await interaction.response.send_message(
+            f"Datu failā atrasta tikai {len(saved_answers)}/2 partneru atbilde. "
+            "Ja atbilde nav saglabāta datos, bots to atjaunot nevar.",
+            ephemeral=True,
+        )
+        return
+
+    history_channel = await fetch_guild_channel(
+        interaction.guild, pair.get("history_channel_id")
+    )
+    if history_channel is None or not hasattr(history_channel, "send"):
+        await interaction.response.send_message(
+            "Nevaru piekļūt pāra vēstures kanālam. Pārbaudi bota kanāla atļaujas.",
+            ephemeral=True,
+        )
+        return
+
+    member_names = {}
+    for member_id in members:
+        member = interaction.guild.get_member(int(member_id))
+        if member is None:
+            try:
+                member = await interaction.guild.fetch_member(int(member_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                member = None
+        member_names[member_id] = (
+            member.display_name if member is not None else f"Dalībnieks {member_id}"
+        )
+
+    lines = [
+        f"✍️ **{member_names.get(member_id, 'Dalībnieks')}**\\n{saved_answers[member_id]}"
+        for member_id in members
+        if member_id in saved_answers
+    ]
+    task_date = pair.get("task_date") or today_string()
+    task_text = pair.get("task_text") or "Uzdevuma teksts datu failā nav saglabāts."
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await history_channel.send(
+            f"🛠️ **Atbilžu atjaunošana — {task_date}**\\n"
+            f"**Uzdevums:** {task_text}\\n\\n" + "\\n\\n".join(lines),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except discord.HTTPException as error:
+        print(f"Neizdevās piespiedu kārtā publicēt atbildes: {error}")
+        await interaction.followup.send(
+            "Neizdevās publicēt atbildes. Pārbaudi bota vēstures kanāla atļaujas.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.followup.send(
+        "Saglabātās atbildes publicētas pāra vēstures kanālā. "
+        "Šī komanda publicē atkārtoti, tāpēc to izmanto tikai atbilžu atjaunošanai.",
+        ephemeral=True,
+    )
+
+
 async def publish_automatic_daily_tasks():
     """Publicē katra pāra dienas uzdevumu no plkst. 09.00 pēc Latvijas laika."""
     now = datetime.now(LATVIA_TZ)
