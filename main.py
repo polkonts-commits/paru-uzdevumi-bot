@@ -1196,7 +1196,6 @@ async def publish_automatic_daily_tasks():
                     "date": pair.get("task_date", ""),
                     "task": pair.get("task_text", ""),
                     "category": pair.get("task_category", ""),
-                    "answers": dict(pair.get("answers", {})),
                     "confirmations": list(pair.get("task_confirmations", [])),
                     "proofs": dict(pair.get("task_proofs", {})),
                     "completed": bool(pair.get("task_completed", False)),
@@ -1402,7 +1401,6 @@ async def task(interaction: discord.Interaction):
             "date": pair.get("task_date", ""),
             "task": pair.get("task_text", ""),
             "category": pair.get("task_category", ""),
-            "answers": dict(pair.get("answers", {})),
                     "confirmations": list(pair.get("task_confirmations", [])),
                     "proofs": dict(pair.get("task_proofs", {})),
                     "completed": bool(pair.get("task_completed", False)),
@@ -1789,13 +1787,14 @@ async def stats(interaction: discord.Interaction):
     streak = int(pair.get("streak", 0))
     last_date = pair.get("last_completed_date") or "Pagaidām nav"
     answers = pair.get("answers", {})
+    answer_count = 2 if pair.get("answers_submitted_date") == today_string() else len(answers)
     confirmations = completion_summary(pair)
     await interaction.response.send_message(
         f"📊 **Jūsu pāra statistika**\n"
         f"✅ Kopā izpildīti uzdevumi: **{completed}**\n"
         f"🔥 Pašreizējā dienu sērija: **{streak}**\n"
         f"📅 Pēdējais izpildītais uzdevums: **{last_date}**\n"
-        f"✍️ Šodien iesniegtās atbildes: **{len(answers)}/2**\n"
+        f"✍️ Šodien iesniegtās atbildes: **{answer_count}/2**\n"
         f"☑️ Šodien izpildi apstiprinājuši: **{confirmations}**",
         ephemeral=True,
     )
