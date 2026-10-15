@@ -259,10 +259,9 @@ def user_is_in_guild_pair(interaction, pair):
     )
 
 
-# Lai bots uztvertu parastās ziņas un tiešus pieminējumus, Message Content Intent
-# jāieslēdz arī Discord Developer Portal sadaļā Bot -> Privileged Gateway Intents.
+# Tiešiem bota pieminējumiem Discord nodrošina nepieciešamo ziņas informāciju
+# arī bez Message Content Intent; neprasām plašāku piekļuvi visam čata saturam.
 intents = discord.Intents.default()
-intents.message_content = True
 
 COMPLIMENTS_BY_CATEGORY = {
     "Smieklīgi": [
