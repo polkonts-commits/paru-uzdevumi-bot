@@ -44,8 +44,9 @@ Nepieciešams Python 3.10 vai jaunāks.
 
 - Ja servera dalībnieks piemin botu, tas atbild ar nejaušu komplimentu latviešu valodā.
 - Ir sešas kategorijas: smieklīgi, draudzīgi, nedaudz sarkastiski, motivējoši, romantiski un flirtējoši.
-- Discord Developer Portal sadaļā **Bot -> Privileged Gateway Intents** ieslēdz **Message Content Intent**. Kodā tas ir aktivizēts ar `intents.message_content = True`.
-- Botam vajadzīga atļauja **View Channels**, **Send Messages** un **Read Message History** attiecīgajā kanālā.
+- Funkcija reaģē tikai uz tiešu bota pieminējumu servera ziņā. Tā neanalizē visas čata ziņas.
+- Šai funkcijai nav jāieslēdz **Message Content Intent**; Discord nodrošina ziņas informāciju gadījumos, kad bots ir pieminēts.
+- Botam vajadzīga atļauja **View Channels** un **Send Messages** attiecīgajā kanālā.
 
 ## Datu glabāšana
 
