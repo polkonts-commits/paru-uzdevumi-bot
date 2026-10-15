@@ -954,6 +954,21 @@ class AnswerView(discord.ui.View):
             return
         await interaction.response.send_modal(AnswerModal())
 
+    @discord.ui.button(label="Pievienot foto", emoji="📷", style=discord.ButtonStyle.secondary, custom_id="daily_task:add_photo")
+    async def add_photo_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+        if not pair or not user_is_in_guild_pair(interaction, pair):
+            await interaction.response.send_message(
+                "Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.", ephemeral=True
+            )
+            return
+        await interaction.response.send_message(
+            "📷 Lai pievienotu foto, izmanto komandu **/task_proof** un izvēlies attēla failu. "
+            "Kad abi būs iesnieguši atbildes, foto varēs publicēt vēsturē ar **/izvilkt_bildes**. "
+            "Discord pogas tieši neatver faila izvēlni.",
+            ephemeral=True,
+        )
+
     @discord.ui.button(label="Atzīmēt izpildītu", emoji="✅", style=discord.ButtonStyle.success, custom_id="daily_task:confirm")
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await confirm_task_completion(interaction)
@@ -1589,6 +1604,77 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
 
 
 @bot.tree.command(
+    name="izvilkt_bildes",
+    description="Piespiedu kārtā publicē saglabātos šodienas foto vēstures kanālā",
+)
+async def izvilkt_bildes(interaction: discord.Interaction):
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Šo komandu var izmantot tikai sava pāra serverī.", ephemeral=True
+        )
+        return
+
+    proofs = pair.get("task_proofs", {})
+    saved_proofs = [
+        (str(uid), proof) for uid, proof in proofs.items()
+        if isinstance(proof, dict) and proof.get("url")
+    ]
+    if not saved_proofs:
+        await interaction.response.send_message(
+            "Datu failā nav atrasts neviens saglabāts foto/pierādījums šodienas uzdevumam.",
+            ephemeral=True,
+        )
+        return
+
+    history_channel = await fetch_guild_channel(
+        interaction.guild, pair.get("history_channel_id")
+    )
+    if history_channel is None or not hasattr(history_channel, "send"):
+        await interaction.response.send_message(
+            "Pāra vēstures kanāls nav pieejams.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    published = 0
+    for uid, proof in saved_proofs:
+        member = interaction.guild.get_member(int(uid))
+        if member is None:
+            try:
+                member = await interaction.guild.fetch_member(int(uid))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
+                member = None
+        name = member.display_name if member is not None else f"Dalībnieks {uid}"
+        embed = discord.Embed(
+            title=f"📷 Saglabātais foto — {name}",
+            description=(
+                f"**Uzdevums:** {pair.get('task_text', 'Nav norādīts')}"
+                f"\n**Datums:** {pair.get('task_date', today_string())}"
+                f"\n[Atvērt oriģinālo failu]({proof['url']})"
+            ),
+            color=discord.Color.from_rgb(190, 70, 120),
+        )
+        if (proof.get("content_type") or "").startswith("image/"):
+            embed.set_image(url=proof["url"])
+        try:
+            await history_channel.send(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            published += 1
+        except discord.HTTPException as error:
+            print(f"Neizdevās publicēt saglabāto foto vēsturē: {error}")
+
+    await interaction.followup.send(
+        f"Publicēti **{published}/{len(saved_proofs)}** saglabātie foto/pierādījumi "
+        f"kanālā <#{pair.get('history_channel_id')}>. "
+        "Atkārtota komandas palaišana publicēs tos vēlreiz.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
     name="setup",
     description="Publicē serverī pāru izveides sveiciena ziņojumu",
 )
@@ -1672,6 +1758,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/task_proof",
         value="Pievieno izvēles pierādījumu; foto uzdevumiem pieņem attēlu.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/izvilkt_bildes",
+        value="Piespiedu kārtā publicē datu failā saglabātos šodienas foto vēstures kanālā. Atkārtota palaišana veidos dublikātus.",
         inline=False,
     )
     embed.add_field(
