@@ -973,6 +973,60 @@ class AnswerView(discord.ui.View):
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await confirm_task_completion(interaction)
 
+async def deliver_answers_privately(interaction: discord.Interaction, pair: dict, today: str) -> tuple[int, int]:
+    """Nosūta katram partnerim otra atbildi DM; veiksmīgas piegādes netiek dublētas."""
+    members = [str(member_id) for member_id in pair.get("members", [])]
+    answers = pair.get("answers", {})
+    if len(members) < 2 or any(member_id not in answers for member_id in members):
+        return 0, len(members)
+
+    delivered = pair.setdefault("answer_dm_delivered", {})
+    delivered_today = {
+        member_id for member_id in members if delivered.get(member_id) == today
+    }
+    failed = []
+    for recipient_id in members:
+        if recipient_id in delivered_today:
+            continue
+        partner_id = next((mid for mid in members if mid != recipient_id), None)
+        if partner_id is None:
+            failed.append(recipient_id)
+            continue
+        try:
+            recipient = await bot.fetch_user(int(recipient_id))
+            await recipient.send(
+                f"💌 **Partnera atbilde — {today}**\n"
+                f"**Dienas uzdevums:** {pair.get('task_text', '')}\n\n"
+                f"{answers[partner_id]}",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            delivered[recipient_id] = today
+            delivered_today.add(recipient_id)
+            # Save each successful delivery so a later retry does not duplicate it.
+            save_data()
+        except (discord.Forbidden, discord.HTTPException, OSError, ValueError) as error:
+            print(f"Neizdevās nosūtīt atbildi DM lietotājam {recipient_id}: {error}")
+            failed.append(recipient_id)
+
+    if len(delivered_today) == len(members):
+        # Keep only a non-sensitive completion marker; do not retain the answer text.
+        pair["answers"] = {}
+        pair["answers_submitted_date"] = today
+        pair["answers_submitted_count"] = 2
+        pair["answers_sent_date"] = today
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Atbildes nosūtītas DM, bet nevarēja saglabāt pabeigšanas statusu: {error}")
+        return len(delivered_today), 0
+
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Neizdevās saglabāt DM piegādes statusu: {error}")
+    return len(delivered_today), len(members) - len(delivered_today)
+
+
 async def submit_answer(interaction: discord.Interaction, answer_text: str):
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair:
@@ -994,14 +1048,16 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
 
     answers = pair.setdefault("answers", {})
     user_key = str(interaction.user.id)
-    if user_key in answers:
+    submitted_today = pair.get("answers_submitted_date") == today
+    if user_key in answers or submitted_today:
         await interaction.response.send_message(
-            "Tava atbilde šodien jau ir saglabāta. Otrā atbilde vēl tiek gaidīta.",
+            "Tava atbilde šodien jau ir saņemta. Atbildes netiek publicētas servera kanālos.",
             ephemeral=True,
         )
         return
 
     answers[user_key] = answer_text
+    pair.setdefault("answer_dm_delivered", {}).pop(user_key, None)
     try:
         save_data()
     except OSError as error:
@@ -1013,74 +1069,41 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
         )
         return
 
-    if len(answers) >= 2 and pair.get("task_revealed_date") != today:
-        history_channel = await fetch_guild_channel(
-            interaction.guild, pair.get("history_channel_id")
-        )
-        if history_channel is None or not hasattr(history_channel, "send"):
-            await interaction.response.send_message(
-                "Atbilde saglabāta, un abi esat atbildējuši, bet vēstures kanāls nav pieejams. "
-                "Abas atbildes vēl nav publicētas.",
-                ephemeral=True,
-            )
-            return
-        member_names = {}
-        for member_id in pair.get("members", []):
-            member = interaction.guild.get_member(int(member_id))
-            if member is None:
-                try:
-                    member = await interaction.guild.fetch_member(int(member_id))
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                    member = None
-            member_names[str(member_id)] = (
-                member.display_name if member is not None else f"Dalībnieks {member_id}"
-            )
-        lines = [
-            f"✍️ **{member_names.get(str(member_id), 'Dalībnieks')}**\n{answers[str(member_id)]}"
-            for member_id in pair.get("members", [])
-            if str(member_id) in answers
-        ]
-        try:
-            await history_channel.send(
-                f"💞 **Abi atbildēja — dienas uzdevums {today}**\n"
-                f"**Uzdevums:** {pair.get('task_text', '')}\n\n"
-                + "\n\n".join(lines),
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-        except discord.HTTPException as error:
-            print(f"Neizdevās publicēt abas atbildes vēstures kanālā: {error}")
-            await interaction.response.send_message(
-                "Abas atbildes ir saglabātas, bet to publicēšana neizdevās. "
-                "Pārbaudi bota vēstures kanāla atļaujas.",
-                ephemeral=True,
-            )
-            return
-        pair["task_revealed_date"] = today
-        try:
-            save_data()
-        except OSError as error:
-            print(f"Atbildes publicētas, bet publicēšanas statuss netika saglabāts: {error}")
+    members = [str(member_id) for member_id in pair.get("members", [])]
+    submitted_count = sum(1 for member_id in members if member_id in answers)
+    if submitted_count < 2:
         await interaction.response.send_message(
-            "Abas atbildes ir iesniegtas. Tagad tās abas ir publicētas pāra vēstures kanālā. "
-            f"🎉 Kopā izpildīti: {pair.get('completed_tasks', 0)}; "
-            f"sērija: {pair.get('streak', 0)} dienas.",
+            "Atbilde saglabāta privāti. Iesniegta 1/2 atbildes. "
+            "Partnera atbilde tev netiks parādīta, kamēr abi nebūs atbildējuši.",
             ephemeral=True,
         )
         return
 
-    await interaction.response.send_message(
-        f"Atbilde saglabāta privāti. Iesniegta {len(answers)}/2 atbildes. "
-        "Tava atbilde otram nebūs redzama, kamēr abi nebūs atbildējuši.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    delivered_count, pending_count = await deliver_answers_privately(interaction, pair, today)
+    if pending_count:
+        await interaction.followup.send(
+            f"Abas atbildes ir saņemtas. Privāti nosūtītas {delivered_count}/2 partnera atbildes; "
+            "otra piegāde vēl nav izdevusies. Pārbaudiet, vai abiem ir atļautas Discord privātās ziņas, "
+            "un vēlāk izmantojiet /izvilkt_atbildes, lai mēģinātu vēlreiz. "
+            "Atbilde paliek saglabāta līdz piegādei.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.followup.send(
+            "Abas atbildes nosūtītas partneriem privātās Discord ziņās. "
+            "Atbilžu teksts ir izņemts no aktīvajiem bota datiem; kopīgajā vēsturē tas netiek publicēts. "
+            f"🎉 Kopā izpildīti: {pair.get('completed_tasks', 0)}; sērija: {pair.get('streak', 0)} dienas.",
+            ephemeral=True,
+        )
 
 
 @bot.tree.command(
     name="izvilkt_atbildes",
-    description="Piespiedu kārtā publicē saglabātās abu partneru atbildes",
+    description="Atkārtoti mēģina nosūtīt neizdevušās partnera atbildes privātā ziņā",
 )
 async def izvilkt_atbildes(interaction: discord.Interaction):
-    """Atjauno atbilžu publicēšanu no pašreiz datu failā saglabātajām atbildēm."""
+    """Šī komanda nekad nepublicē atbilžu tekstu servera kanālos; tā tikai atkārto DM piegādi."""
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair or not user_is_in_guild_pair(interaction, pair):
         await interaction.response.send_message(
@@ -1088,74 +1111,36 @@ async def izvilkt_atbildes(interaction: discord.Interaction):
         )
         return
 
-    members = [str(member_id) for member_id in pair.get("members", [])]
+    today = today_string()
     answers = pair.get("answers", {})
-    saved_answers = {
-        member_id: answers.get(member_id, answers.get(int(member_id), None))
-        for member_id in members
-    }
-    saved_answers = {
-        member_id: answer for member_id, answer in saved_answers.items()
-        if isinstance(answer, str) and answer.strip()
-    }
-
-    if len(saved_answers) < 2:
+    members = [str(member_id) for member_id in pair.get("members", [])]
+    if pair.get("answers_submitted_date") == today and not answers:
         await interaction.response.send_message(
-            f"Datu failā atrasta tikai {len(saved_answers)}/2 partneru atbilde. "
-            "Ja atbilde nav saglabāta datos, bots to atjaunot nevar.",
+            "Šodienas atbildes jau ir nosūtītas privāti. Tās netiek publicētas servera kanālos.",
+            ephemeral=True,
+        )
+        return
+    if len(members) < 2 or any(member_id not in answers for member_id in members):
+        await interaction.response.send_message(
+            "Vēl nav saņemtas abu partneru atbildes, vai trūkst saglabātas atbildes. "
+            "Komanda neko nepublicēs servera kanālos.",
             ephemeral=True,
         )
         return
 
-    history_channel = await fetch_guild_channel(
-        interaction.guild, pair.get("history_channel_id")
-    )
-    if history_channel is None or not hasattr(history_channel, "send"):
-        await interaction.response.send_message(
-            "Nevaru piekļūt pāra vēstures kanālam. Pārbaudi bota kanāla atļaujas.",
-            ephemeral=True,
-        )
-        return
-
-    member_names = {}
-    for member_id in members:
-        member = interaction.guild.get_member(int(member_id))
-        if member is None:
-            try:
-                member = await interaction.guild.fetch_member(int(member_id))
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                member = None
-        member_names[member_id] = (
-            member.display_name if member is not None else f"Dalībnieks {member_id}"
-        )
-
-    lines = [
-        f"✍️ **{member_names.get(member_id, 'Dalībnieks')}**\\n{saved_answers[member_id]}"
-        for member_id in members
-        if member_id in saved_answers
-    ]
-    task_date = pair.get("task_date") or today_string()
-    task_text = pair.get("task_text") or "Uzdevuma teksts datu failā nav saglabāts."
-    await interaction.response.defer(ephemeral=True)
-    try:
-        await history_channel.send(
-            f"🛠️ **Atbilžu atjaunošana — {task_date}**\\n"
-            f"**Uzdevums:** {task_text}\\n\\n" + "\\n\\n".join(lines),
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-    except discord.HTTPException as error:
-        print(f"Neizdevās piespiedu kārtā publicēt atbildes: {error}")
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    delivered_count, pending_count = await deliver_answers_privately(interaction, pair, today)
+    if pending_count:
         await interaction.followup.send(
-            "Neizdevās publicēt atbildes. Pārbaudi bota vēstures kanāla atļaujas.",
+            f"Privātā piegāde pabeigta {delivered_count}/2 partneriem. "
+            "Atlikušā piegāde neizdevās; pārbaudiet Discord DM iestatījumus un mēģiniet vēlreiz.",
             ephemeral=True,
         )
-        return
-
-    await interaction.followup.send(
-        "Saglabātās atbildes publicētas pāra vēstures kanālā. "
-        "Šī komanda publicē atkārtoti, tāpēc to izmanto tikai atbilžu atjaunošanai.",
-        ephemeral=True,
-    )
+    else:
+        await interaction.followup.send(
+            "Partnera atbildes ir nosūtītas privāti. Atbilžu teksts nav publicēts servera kanālā.",
+            ephemeral=True,
+        )
 
 
 async def publish_automatic_daily_tasks():
@@ -1752,7 +1737,7 @@ async def help_command(interaction: discord.Interaction):
     )
     embed.add_field(
         name="/answer",
-        value="Iesniedz atbildi privāti. Dienas uzdevumā vari arī nospiest pogu Atbildēt; atbildes tiek parādītas tikai pēc abu atbilžu saņemšanas.",
+        value="Iesniedz atbildi privāti. Kad abi atbildējuši, partnera atbilde tiek nosūtīta Discord DM, nevis publicēta servera kanālā.",
         inline=False,
     )
     embed.add_field(
