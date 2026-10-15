@@ -995,9 +995,10 @@ async def deliver_answers_privately(interaction: discord.Interaction, pair: dict
         try:
             recipient = await bot.fetch_user(int(recipient_id))
             await recipient.send(
-                f"💌 **Partnera atbilde — {today}**\n"
+                f"💌 **Jūsu atbildes — {today}**\n"
                 f"**Dienas uzdevums:** {pair.get('task_text', '')}\n\n"
-                f"{answers[partner_id]}",
+                f"📝 **Tava atbilde:**\n{answers[recipient_id]}\n\n"
+                f"💞 **Partnera atbilde:**\n{answers[partner_id]}",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
             delivered[recipient_id] = today
@@ -1091,7 +1092,7 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
         )
     else:
         await interaction.followup.send(
-            "Abas atbildes nosūtītas partneriem privātās Discord ziņās. "
+            "Abu partneru atbildes nosūtītas katram privātā Discord ziņā. "
             "Atbilžu teksts ir izņemts no aktīvajiem bota datiem; kopīgajā vēsturē tas netiek publicēts. "
             f"🎉 Kopā izpildīti: {pair.get('completed_tasks', 0)}; sērija: {pair.get('streak', 0)} dienas.",
             ephemeral=True,
@@ -1100,7 +1101,7 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
 
 @bot.tree.command(
     name="izvilkt_atbildes",
-    description="Atkārtoti mēģina nosūtīt neizdevušās partnera atbildes privātā ziņā",
+    description="Atkārtoti mēģina nosūtīt abu partneru atbildes privātā ziņā",
 )
 async def izvilkt_atbildes(interaction: discord.Interaction):
     """Šī komanda nekad nepublicē atbilžu tekstu servera kanālos; tā tikai atkārto DM piegādi."""
