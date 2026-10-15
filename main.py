@@ -259,7 +259,90 @@ def user_is_in_guild_pair(interaction, pair):
     )
 
 
+# Lai bots uztvertu parastās ziņas un tiešus pieminējumus, Message Content Intent
+# jāieslēdz arī Discord Developer Portal sadaļā Bot -> Privileged Gateway Intents.
 intents = discord.Intents.default()
+intents.message_content = True
+
+COMPLIMENTS_BY_CATEGORY = {
+    "Smieklīgi": [
+        "tev ir tāds leģendārs līmenis, ka pat lagam paliek kauns.",
+        "ja labs garastāvoklis būtu sports, tu jau būtu čempions.",
+        "tu vari ienākt istabā un likt pat Wi-Fi signālam kļūt stiprākam.",
+        "tava harizma strādā arī tad, kad smadzenes ir pusdienu pārtraukumā.",
+        "tu esi pierādījums, ka haoss reizēm var būt ļoti simpātisks.",
+        "tev piemīt reta spēja likt parastai dienai izskatīties pēc komēdijas.",
+        "ja slinkums būtu olimpiskais sporta veids, tu vismaz būtu labs komentētājs.",
+        "tu esi kā pēdējais kartupelis uz šķīvja — visi priecājas, ka vēl esi.",
+        "tava klātbūtne ir labāka par paziņojumu, ka rīt nav jāceļas agri.",
+        "pat tava nejaušā ideja reizēm ir labāka par citu cilvēku plānu A.",
+    ],
+    "Draudzīgi": [
+        "tu proti padarīt sarunu patīkamāku tikai ar savu klātbūtni.",
+        "ir labi, ka esi šeit — tava klātbūtne tiešām kaut ko dod.",
+        "tev piemīt spēja likt cilvēkiem justies pieņemtiem.",
+        "tu esi cilvēks, ar kuru var parunāt arī tad, kad nav ko teikt.",
+        "tava laipnība var izmainīt kādam visu dienu.",
+        "tu esi pelnījis tikpat daudz atbalsta, cik pats dod citiem.",
+        "tev ir laba sirds, un tas ir vairāk vērts, nekā dažreiz šķiet.",
+        "ar tevi kopā pat ikdienišķas lietas kļūst mazliet foršākas.",
+        "tu proti būt savējais, neizliekoties par kādu citu.",
+        "pasaule kļūst mazliet labāka, kad cilvēki izturas cits pret citu kā tu.",
+    ],
+    "Nedaudz sarkastiski": [
+        "neticami, bet šoreiz tev tiešām ir taisnība. Izbaudi šo reto mirkli.",
+        "tev ir pārsteidzoši daudz potenciāla — dažreiz tas pat parādās.",
+        "tu esi dzīvs pierādījums, ka brīnumi notiek arī bez instrukcijas.",
+        "tava pašpārliecinātība ir iespaidīga, un dažreiz pat pamatota.",
+        "tu neesi perfekts, bet konkurencei tas droši vien ir atvieglojums.",
+        "tev ir talants izskatīties tā, it kā viss būtu kontrolēts. Gandrīz.",
+        "tu esi gudrāks, nekā pats dažreiz ļauj citiem domāt.",
+        "šodien tu izskaties pēc cilvēka, kurš patiešām izlasīja instrukciju. Lepojamies.",
+        "tava ideja nav slikta. Es arī esmu pārsteigts.",
+        "tu esi patīkami kaitinošs veidā, ko grūti izskaidrot.",
+    ],
+    "Motivējoši": [
+        "tev nav jābūt perfektam — pietiek turpināt kustēties uz priekšu.",
+        "tu jau esi ticis pāri dienām, par kurām domāji, ka netiksi galā.",
+        "mazs solis joprojām ir progress. Turpini!",
+        "tava neatlaidība ir svarīgāka par vienu neveiksmīgu mēģinājumu.",
+        "tev ir tiesības sākt no jauna tik reižu, cik vajadzīgs.",
+        "nepazemini savus sasniegumus tikai tāpēc, ka tie nāca ar piepūli.",
+        "tu vari vairāk, nekā šī brīža nogurums tev liek domāt.",
+        "nav jāuzvar visiem — šodien pietiek uzvarēt pašam savus šķēršļus.",
+        "tu esi pelnījis lepoties ar sevi arī par mazajām uzvarām.",
+        "turpini savā tempā. Arī lēns progress ir progress.",
+    ],
+    "Romantiski": [
+        "kādam tu esi mīļākā ziņa, kas var parādīties telefonā.",
+        "tava uzmanība var likt cilvēkam justies īpašam.",
+        "tevī ir kaut kas tāds, ko nevar aizstāt ar nevienu citu.",
+        "tu esi pelnījis attiecības, kurās vari būt pilnīgi tu pats.",
+        "tavs smaids var kļūt par kāda cilvēka dienas labāko daļu.",
+        "pat vienkāršs brīdis ar tevi var kļūt par skaistu atmiņu.",
+        "tev ir savs veids, kā likt sirdij justies mazliet vieglāk.",
+        "tu esi pelnījis maigumu, godīgumu un cilvēku, kurš izvēlas tevi arī ikdienā.",
+        "tava īstā vērtība nav atkarīga no tā, cik bieži kāds to pasaka.",
+        "tu vari būt kādam miers pēc garas dienas.",
+    ],
+    "Flirtējoši": [
+        "vai šeit ir karsts, vai tu vienkārši ienāci čatā?",
+        "tev vajadzētu brīdinājuma zīmi — tik daudz šarma var novērst uzmanību.",
+        "tu neesi mans Wi-Fi, bet kaut kā mani pievelc.",
+        "ja smaids būtu superjauda, tu jau sen būtu bīstams.",
+        "tev ir tāds skatiens… pat ja es to redzu tikai savā iztēlē.",
+        "es mēģināju izdomāt asprātīgu komplimentu, bet tu mani novērsi.",
+        "tavs vārds čatā izskatās aizdomīgi labi.",
+        "tu esi iemesls, kāpēc kāds varētu pārbaudīt paziņojumus mazliet biežāk.",
+        "ja šarms dotu XP, tu jau būtu maksimālajā līmenī.",
+        "uzmanīgi — ar tādu enerģiju tu vari nejauši kādam iepatikties.",
+    ],
+}
+
+
+def random_compliment():
+    category = random.choice(tuple(COMPLIMENTS_BY_CATEGORY))
+    return category, random.choice(COMPLIMENTS_BY_CATEGORY[category])
 
 
 class CoupleBot(commands.Bot):
@@ -278,6 +361,34 @@ class CoupleBot(commands.Bot):
 
 
 bot = CoupleBot(command_prefix="!", intents=intents)
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    # Atbild tikai uz servera ziņām, kurās tieši pieminēts šis bots.
+    # Ignorē citu botu ziņas, lai izvairītos no botu savstarpējas sarunāšanās.
+    if message.author.bot:
+        return
+
+    if message.guild is not None and bot.user is not None and bot.user in message.mentions:
+        category, compliment = random_compliment()
+        try:
+            await message.reply(
+                f"✨ {message.author.mention}, {compliment}  _({category})_",
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(
+                    users=[message.author],
+                    roles=False,
+                    everyone=False,
+                    replied_user=False,
+                ),
+            )
+        except discord.HTTPException as error:
+            print(f"Neizdevās nosūtīt komplimentu: {error}")
+
+    # Saglabā prefix komandu darbību, ja tās nākotnē tiks pievienotas.
+    await bot.process_commands(message)
+
 
 
 class PartnerSelectView(discord.ui.View):
