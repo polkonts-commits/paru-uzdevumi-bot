@@ -39,6 +39,14 @@ Nepieciešams Python 3.10 vai jaunāks.
 4. Ielūdz botu serverī ar `bot` un `applications.commands` OAuth2 tvērumiem.
 5. Piešķir botam atļaujas veidot un dzēst kanālus/kategorijas, skatīt kanālus, sūtīt ziņas un lasīt ziņu vēsturi.
 
+
+## Nejaušie komplimenti
+
+- Ja servera dalībnieks piemin botu, tas atbild ar nejaušu komplimentu latviešu valodā.
+- Ir sešas kategorijas: smieklīgi, draudzīgi, nedaudz sarkastiski, motivējoši, romantiski un flirtējoši.
+- Discord Developer Portal sadaļā **Bot -> Privileged Gateway Intents** ieslēdz **Message Content Intent**. Kodā tas ir aktivizēts ar `intents.message_content = True`.
+- Botam vajadzīga atļauja **View Channels**, **Send Messages** un **Read Message History** attiecīgajā kanālā.
+
 ## Datu glabāšana
 
 Pāri, dienas uzdevumi un atbildes tiek glabāti lokālajā `data.json` failā. Ja hostinga vide dzēš lokālos failus pēc restartēšanas, izmanto pastāvīgu disku vai datubāzi. Neizdzēs `data.json`, ja vēlies saglabāt pašreizējo bota stāvokli.
