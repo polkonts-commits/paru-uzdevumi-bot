@@ -5,11 +5,13 @@ Discord bots pāru izveidei, privātām istabām, ikdienas uzdevumiem un atbilž
 ## Funkcijas
 
 - `/pair_invite` — uzaicina servera dalībnieku izveidot pāri.
-- `/task` — publicē vienu dienas uzdevumu; atkārtota komandas lietošana tajā pašā dienā neizveido jaunu uzdevumu.
+- `/task` — parāda pašreizējo uzdevumu vai izsniedz pirmo uzdevumu pārim.
+- Katram uzdevumam ir **24 stundu termiņš no izdošanas brīža**. Ja abi to pabeidz agrāk, nākamais uzdevums tik un tā tiek izsniegts tikai pēc pilnām 24 stundām.
+- Ja 24 stundu laikā uzdevums nav pabeigts, termiņa beigās tas nonāk vēsturē un tiek izsniegts nākamais. Nepabeigtais uzdevums un tā statuss netiek dzēsts no vēstures.
 - `/answer teksts` — saglabā lietotāja atbildi un apstiprina iesniegšanu.
 - `/unpair` — pēc apstiprinājuma dzēš pāra kanālus un pāra datus no bota datu faila.
 
-Dienas datums tiek aprēķināts pēc Latvijas laika zonas (`Europe/Riga`).
+Laika zīmogi un termiņi tiek aprēķināti pēc Latvijas laika zonas (`Europe/Riga`). Uzdevuma izpildes termiņš darbojas arī tad, ja tas šķērso pusnakti.
 
 ## Palaišana
 
