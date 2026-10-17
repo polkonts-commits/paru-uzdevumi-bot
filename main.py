@@ -1432,17 +1432,16 @@ async def publish_automatic_daily_tasks():
         # Nosūtām tikai tad, ja pašreizējais uzdevums vēl nav piegādāts.
         if pair.get("task_sent_at"):
             continue
-        deadline = task_deadline_at(pair)
         deadline_line = task_deadline_text(pair)
         mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         try:
             await channel.send(
-                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
-                f"**Režīms:** {mode_label}\\n\\n"
-                f"{pair.get('task_text', '')}\\n\\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
-                f"{deadline_line}\\n"
+                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\n"
+                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
+                f"**Režīms:** {mode_label}\n\n"
+                f"{pair.get('task_text', '')}\n\n"
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
+                f"{deadline_line}\n"
                 "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
                 "Ja abi to izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
                 "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
@@ -1653,9 +1652,9 @@ async def task(interaction: discord.Interaction):
     # /task nedrīkst izsniegt jaunu uzdevumu pirms 24 h termiņa.
     if pair.get("task_sent_at") or pair.get("task_sent_date"):
         await interaction.response.send_message(
-            f"Pašreizējais uzdevums vēl ir spēkā.\\n\\n"
-            f"**{pair.get('task_text', '')}**\\n"
-            f"{task_deadline_text(pair)}\\n"
+            f"Pašreizējais uzdevums vēl ir spēkā.\n\n"
+            f"**{pair.get('task_text', '')}**\n"
+            f"{task_deadline_text(pair)}\n"
             f"Atlikušais laiks: **{task_time_left(pair, now)}**. "
             "Nākamais uzdevums būs pieejams pēc 24 stundām no šī uzdevuma izdošanas.",
             ephemeral=True,
@@ -1665,12 +1664,12 @@ async def task(interaction: discord.Interaction):
     mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
     try:
         await channel.send(
-            f"💞 **Pāra uzdevums — {pair.get('task_date', today_string())}**\\n"
-            f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
-            f"**Režīms:** {mode_label}\\n\\n"
-            f"{pair.get('task_text', '')}\\n\\n"
-            f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
-            f"{task_deadline_text(pair)}\\n"
+            f"💞 **Pāra uzdevums — {pair.get('task_date', today_string())}**\n"
+            f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
+            f"**Režīms:** {mode_label}\n\n"
+            f"{pair.get('task_text', '')}\n\n"
+            f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
+            f"{task_deadline_text(pair)}\n"
             "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
             "Ja abi izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
             "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
@@ -1962,7 +1961,7 @@ async def help_command(interaction: discord.Interaction):
         value="Parāda šo palīdzības sarakstu.",
         inline=False,
     )
-    embed.set_footer(text="Automātiskais dienas uzdevums tiek nosūtīts plkst. 09.00 pēc Latvijas laika.")
+    embed.set_footer(text="Katrs uzdevums ir spēkā 24 stundas no izdošanas brīža.")
     await interaction.response.send_message(
         embed=embed,
         ephemeral=True,
