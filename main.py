@@ -3,7 +3,7 @@ import json
 import os
 import random
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -185,6 +185,127 @@ TASKS["attālināti"].extend([
     ("18+", "Kopīgi izveidojiet “jā / varbūt / nē” sarakstu intīmām idejām, katram atbildot tikai tik detalizēti, cik ērti."),
 ])
 
+
+
+TASK_DEADLINE_HOURS = 24
+
+
+def parse_task_timestamp(value):
+    """Pārvērš saglabātu ISO laiku Latvijas laika joslā."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=LATVIA_TZ)
+    return parsed.astimezone(LATVIA_TZ)
+
+
+def task_issued_at(pair):
+    return parse_task_timestamp(pair.get("task_issued_at"))
+
+
+def task_deadline_at(pair):
+    saved_deadline = parse_task_timestamp(pair.get("task_deadline_at"))
+    if saved_deadline is not None:
+        return saved_deadline
+    issued = task_issued_at(pair)
+    return issued + timedelta(hours=TASK_DEADLINE_HOURS) if issued else None
+
+
+def task_is_active(pair, now=None):
+    """Aktīvs uzdevums ir izmantojams līdz 24 h termiņa beigām."""
+    if not pair.get("task_text"):
+        return False
+    now = now or datetime.now(LATVIA_TZ)
+    deadline = task_deadline_at(pair)
+    # Vecos ierakstus bez laika zīmogiem saglabājam aktīvus, līdz tos droši
+    # migrē grafika cikls; tas neļauj nejauši pazaudēt pašreizējo uzdevumu.
+    return deadline is None or now < deadline
+
+
+def task_time_left(pair, now=None):
+    now = now or datetime.now(LATVIA_TZ)
+    deadline = task_deadline_at(pair)
+    if deadline is None:
+        return "termiņš tiks noteikts pēc datu migrācijas"
+    remaining = max(0, int((deadline - now).total_seconds()))
+    hours, remainder = divmod(remaining, 3600)
+    minutes = remainder // 60
+    return f"{hours} h {minutes} min"
+
+
+def choose_task_for_pair(pair):
+    mode = pair.get("task_mode", "random")
+    if mode not in TASKS and mode != "random":
+        mode = "random"
+        pair["task_mode"] = mode
+    if mode == "random":
+        available = [
+            (category, task_text)
+            for group in TASKS.values()
+            for category, task_text in group
+        ]
+    else:
+        available = list(TASKS[mode])
+    used_tasks = {
+        entry.get("task", "")
+        for entry in pair.get("history", [])
+        if isinstance(entry, dict)
+    }
+    if pair.get("task_text"):
+        used_tasks.add(pair["task_text"])
+    fresh_choices = [item for item in available if item[1] not in used_tasks]
+    choices = fresh_choices or [
+        item for item in available if item[1] != pair.get("task_text")
+    ] or available
+    return random.choice(choices) if choices else (None, None)
+
+
+def archive_current_task(pair, expired=False):
+    if not pair.get("task_text"):
+        return
+    pair.setdefault("history", []).append({
+        "date": pair.get("task_date", ""),
+        "task": pair.get("task_text", ""),
+        "category": pair.get("task_category", ""),
+        "confirmations": list(pair.get("task_confirmations", [])),
+        "proofs": dict(pair.get("task_proofs", {})),
+        "completed": bool(pair.get("task_completed", False)),
+        "issued_at": pair.get("task_issued_at", ""),
+        "deadline_at": pair.get("task_deadline_at", ""),
+        "expired": bool(expired and not pair.get("task_completed", False)),
+    })
+
+
+def assign_new_task(pair, now=None):
+    """Piešķir un saglabā jaunu uzdevumu ar 24 stundu termiņu."""
+    now = now or datetime.now(LATVIA_TZ)
+    category, task_text = choose_task_for_pair(pair)
+    if not task_text:
+        return False
+    pair["task_category"] = category
+    pair["task_text"] = task_text
+    pair["task_date"] = now.date().isoformat()
+    pair["task_sent_date"] = ""
+    pair["task_sent_at"] = ""
+    pair["task_issued_at"] = now.isoformat()
+    pair["task_deadline_at"] = (now + timedelta(hours=TASK_DEADLINE_HOURS)).isoformat()
+    pair["task_completed"] = False
+    pair["task_type"] = infer_task_type(task_text)
+    pair["task_confirmations"] = []
+    pair["task_proofs"] = {}
+    pair["answers"] = {}
+    return True
+
+
+def task_deadline_text(pair):
+    deadline = task_deadline_at(pair)
+    if deadline is None:
+        return "⏳ Izpildes termiņš: 24 stundas no uzdevuma aktivizēšanas."
+    return f"⏳ **Izpildes termiņš:** līdz <t:{int(deadline.timestamp())}:F> (<t:{int(deadline.timestamp())}:R>)."
 
 def load_data():
     if not DATA_FILE.exists():
@@ -546,6 +667,9 @@ class PairInvite(discord.ui.View):
                 "history_channel_id": history_channel.id,
                 "task_date": "",
                 "task_sent_date": "",
+                "task_sent_at": "",
+                "task_issued_at": "",
+                "task_deadline_at": "",
                 "task_text": "",
                 "task_category": "",
                 "task_mode": "random",
@@ -974,7 +1098,7 @@ async def confirm_task_completion(interaction: discord.Interaction):
         await interaction.response.send_message("Šī darbība pieejama tikai sava pāra dalībniekiem.", ephemeral=True)
         return
     today = today_string()
-    if pair.get("task_date") != today or not pair.get("task_text"):
+    if not task_is_active(pair):
         await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
         return
     confirmations = pair.setdefault("task_confirmations", [])
@@ -1056,7 +1180,7 @@ class AnswerView(discord.ui.View):
         if not pair or not user_is_in_guild_pair(interaction, pair):
             await interaction.response.send_message("Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.", ephemeral=True)
             return
-        if pair.get("task_date") != today_string() or not pair.get("task_text"):
+        if not task_is_active(pair):
             await interaction.response.send_message("Šis vairs nav aktuālais dienas uzdevums. Atver jaunāko uzdevumu.", ephemeral=True)
             return
         if str(interaction.user.id) in pair.get("answers", {}):
@@ -1151,7 +1275,7 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
         )
         return
     today = today_string()
-    if pair.get("task_date") != today or not pair.get("task_text"):
+    if not task_is_active(pair):
         await interaction.response.send_message(
             "Vispirms palūdz dienas uzdevumu ar /task.", ephemeral=True
         )
@@ -1255,17 +1379,48 @@ async def izvilkt_atbildes(interaction: discord.Interaction):
 
 
 async def publish_automatic_daily_tasks():
-    """Publicē katra pāra dienas uzdevumu no plkst. 09.00 pēc Latvijas laika."""
+    """Izsniedz jaunu uzdevumu ik pēc 24 stundām, neatkarīgi no kalendārās dienas."""
     now = datetime.now(LATVIA_TZ)
-    if now.hour < 9:
-        return
-
     today = now.date().isoformat()
+
     for pair_id, pair in list(data.get("pairs", {}).items()):
-        # If today's task was saved but Discord delivery failed, retry sending
-        # the same task instead of silently treating it as published.
-        if pair.get("task_date") == today and pair.get("task_sent_date") == today:
-            continue
+        if not pair.get("task_text"):
+            if not assign_new_task(pair, now):
+                continue
+            try:
+                save_data()
+            except OSError as error:
+                print(f"Neizdevās saglabāt automātisko uzdevumu pārim {pair_id}: {error}")
+                continue
+        else:
+            issued = task_issued_at(pair)
+            if issued is None:
+                # Migrējam esošo aktīvo uzdevumu, saglabājot tā tekstu un statusu.
+                # Ja tas jau bija nosūtīts, nepublicējam to atkārtoti.
+                issued = now
+                pair["task_issued_at"] = issued.isoformat()
+                pair["task_deadline_at"] = (issued + timedelta(hours=TASK_DEADLINE_HOURS)).isoformat()
+                if pair.get("task_sent_date"):
+                    pair["task_sent_at"] = issued.isoformat()
+                try:
+                    save_data()
+                except OSError as error:
+                    print(f"Neizdevās migrēt uzdevuma termiņu pārim {pair_id}: {error}")
+                    continue
+
+            deadline = task_deadline_at(pair)
+            if deadline is not None and now >= deadline:
+                archive_current_task(pair, expired=not pair.get("task_completed", False))
+                if not assign_new_task(pair, now):
+                    continue
+                try:
+                    save_data()
+                except OSError as error:
+                    print(f"Neizdevās saglabāt nākamo uzdevumu pārim {pair_id}: {error}")
+                    continue
+            elif pair.get("task_sent_at"):
+                # Ja abi pabeidza agrāk, jauns uzdevums tik un tā gaida 24 h termiņu.
+                continue
 
         guild = bot.get_guild(int(pair.get("guild_id", 0)))
         if guild is None:
@@ -1274,85 +1429,34 @@ async def publish_automatic_daily_tasks():
         if channel is None or not hasattr(channel, "send"):
             continue
 
-        if pair.get("task_date") != today:
-            mode = pair.get("task_mode", "random")
-            if mode not in TASKS and mode != "random":
-                mode = "random"
-                pair["task_mode"] = mode
-            if mode == "random":
-                available = [
-                    (category, task_text)
-                    for group in TASKS.values()
-                    for category, task_text in group
-                ]
-            else:
-                available = list(TASKS[mode])
-
-            used_tasks = {
-                entry.get("task", "")
-                for entry in pair.get("history", [])
-                if isinstance(entry, dict)
-            }
-            if pair.get("task_text"):
-                used_tasks.add(pair["task_text"])
-            fresh_choices = [item for item in available if item[1] not in used_tasks]
-            choices = fresh_choices or [
-                item for item in available if item[1] != pair.get("task_text")
-            ] or available
-            if not choices:
-                continue
-
-            if pair.get("task_text"):
-                pair.setdefault("history", []).append({
-                    "date": pair.get("task_date", ""),
-                    "task": pair.get("task_text", ""),
-                    "category": pair.get("task_category", ""),
-                    "confirmations": list(pair.get("task_confirmations", [])),
-                    "proofs": dict(pair.get("task_proofs", {})),
-                    "completed": bool(pair.get("task_completed", False)),
-                })
-
-            category, task_text = random.choice(choices)
-            pair["task_category"] = category
-            pair["task_text"] = task_text
-            pair["task_date"] = today
-            pair["task_sent_date"] = ""
-            pair["task_completed"] = False
-            pair["task_type"] = infer_task_type(task_text)
-            pair["task_confirmations"] = []
-            pair["task_proofs"] = {}
-            pair["answers"] = {}
-            try:
-                save_data()
-            except OSError as error:
-                print(f"Neizdevās saglabāt automātisko uzdevumu pārim {pair_id}: {error}")
-                continue
-
-        mode = pair.get("task_mode", "random")
-        mode_label = MODE_LABELS.get(mode, MODE_LABELS["random"])
+        # Nosūtām tikai tad, ja pašreizējais uzdevums vēl nav piegādāts.
+        if pair.get("task_sent_at"):
+            continue
+        deadline = task_deadline_at(pair)
+        deadline_line = task_deadline_text(pair)
+        mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         try:
             await channel.send(
-                f"🌅 **Labrīt! Dienas uzdevums — {today}**\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
-                f"**Režīms:** {mode_label}\n\n"
-                f"{pair.get('task_text', '')}\n\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
-                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
-                "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
-                "videozvanam pietiek ar abu apstiprinājumu.",
+                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\\n"
+                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
+                f"**Režīms:** {mode_label}\\n\\n"
+                f"{pair.get('task_text', '')}\\n\\n"
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                f"{deadline_line}\\n"
+                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
+                "Ja abi to izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
+                "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
                 view=AnswerView(),
             )
         except discord.HTTPException as error:
             print(f"Neizdevās nosūtīt automātisko uzdevumu pārim {pair_id}: {error}")
             continue
 
-        # Mark as delivered only after Discord confirms the send.
         pair["task_sent_date"] = today
+        pair["task_sent_at"] = now.isoformat()
         try:
             save_data()
         except OSError as error:
-            # The message has been sent, so a later retry may duplicate it if
-            # persistence is unavailable. Log this clearly rather than hiding it.
             print(f"Uzdevums nosūtīts, bet piegādes statuss netika saglabāts pārim {pair_id}: {error}")
 
 
@@ -1483,7 +1587,7 @@ async def izveidot_pari(interaction: discord.Interaction):
 
 @bot.tree.command(
     name="task",
-    description="Publicē šodienas pāra uzdevumu",
+    description="Parāda pašreizējo pāra uzdevumu vai izsniedz pirmo",
 )
 async def task(interaction: discord.Interaction):
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
@@ -1505,59 +1609,33 @@ async def task(interaction: discord.Interaction):
         )
         return
 
-    today = today_string()
-    is_new_task = pair.get("task_date") != today
-    if is_new_task:
-        previous = {
-            "date": pair.get("task_date", ""),
-            "task": pair.get("task_text", ""),
-            "category": pair.get("task_category", ""),
-                    "confirmations": list(pair.get("task_confirmations", [])),
-                    "proofs": dict(pair.get("task_proofs", {})),
-                    "completed": bool(pair.get("task_completed", False)),
-        }
-        if pair.get("task_text"):
-            pair.setdefault("history", []).append(previous)
-
-        mode = pair.get("task_mode", "random")
-        if mode not in TASKS:
-            mode = "random"
-            pair["task_mode"] = mode
-        if mode == "random":
-            available = [
-                (category, text)
-                for group in TASKS.values()
-                for category, text in group
-            ]
-        else:
-            available = list(TASKS[mode])
-
-        used_tasks = {
-            entry.get("task", "")
-            for entry in pair.get("history", [])
-            if isinstance(entry, dict)
-        }
-        if pair.get("task_text"):
-            used_tasks.add(pair["task_text"])
-        fresh_choices = [item for item in available if item[1] not in used_tasks]
-        choices = fresh_choices or [
-            item for item in available if item[1] != pair.get("task_text")
-        ] or available
-        category, task_text = random.choice(choices)
-        pair["task_category"] = category
-        pair["task_text"] = task_text
-        pair["task_date"] = today
-        pair["task_completed"] = False
-        pair["task_type"] = infer_task_type(task_text)
-        pair["task_confirmations"] = []
-        pair["task_proofs"] = {}
-        pair["answers"] = {}
+    now = datetime.now(LATVIA_TZ)
+    active = task_is_active(pair, now)
+    if active and task_issued_at(pair) is None:
+        # Esošais uzdevums paliek spēkā; sākam tā termiņa uzskaiti no migrācijas.
+        pair["task_issued_at"] = now.isoformat()
+        pair["task_deadline_at"] = (now + timedelta(hours=TASK_DEADLINE_HOURS)).isoformat()
+        if pair.get("task_sent_date"):
+            pair["task_sent_at"] = now.isoformat()
         try:
             save_data()
         except OSError as error:
-            print(f"Neizdevās saglabāt dienas uzdevumu: {error}")
+            print(f"Neizdevās saglabāt esošā uzdevuma termiņu: {error}")
+
+    if not active:
+        if pair.get("task_text"):
+            archive_current_task(pair, expired=not pair.get("task_completed", False))
+        if not assign_new_task(pair, now):
             await interaction.response.send_message(
-                "Neizdevās saglabāt uzdevumu. Pārbaudi, vai botam ir tiesības rakstīt datu failā.",
+                "Pašlaik nav pieejams neviens uzdevums.", ephemeral=True
+            )
+            return
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt jauno uzdevumu: {error}")
+            await interaction.response.send_message(
+                "Neizdevās saglabāt uzdevumu. Esošie dati nav dzēsti; mēģini vēlreiz.",
                 ephemeral=True,
             )
             return
@@ -1571,40 +1649,50 @@ async def task(interaction: discord.Interaction):
             ephemeral=True,
         )
         return
-    if is_new_task or pair.get("task_sent_date") != today:
-        mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
-        try:
-            await channel.send(
-                f"📅 **Dienas uzdevums — {today}**\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
-                f"**Režīms:** {mode_label}\n\n"
-                f"{pair['task_text']}\n\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
-                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums būs pabeigts, kad apstiprināsiet abi. "
-                "Pierādījumi ir pēc izvēles — pievieno tos ar /task_proof. Foto uzdevumiem var pievienot attēlu; "
-                "videozvanam pietiek ar abu apstiprinājumu.",
-                view=AnswerView(),
-            )
-        except discord.HTTPException as error:
-            print(f"Neizdevās publicēt manuālo uzdevumu: {error}")
-            await interaction.response.send_message(
-                "Uzdevumu neizdevās nosūtīt. Mēģini vēlreiz pēc brīža.",
-                ephemeral=True,
-            )
-            return
-        pair["task_sent_date"] = today
-        try:
-            save_data()
-        except OSError as error:
-            print(f"Uzdevums nosūtīts, bet piegādes statuss netika saglabāts: {error}")
+
+    # /task nedrīkst izsniegt jaunu uzdevumu pirms 24 h termiņa.
+    if pair.get("task_sent_at") or pair.get("task_sent_date"):
         await interaction.response.send_message(
-            "Šodienas uzdevums publicēts privātajā kanālā.", ephemeral=True
-        )
-    else:
-        await interaction.response.send_message(
-            f"Šodienas uzdevums jau ir publicēts:\n\n**{pair['task_text']}**",
+            f"Pašreizējais uzdevums vēl ir spēkā.\\n\\n"
+            f"**{pair.get('task_text', '')}**\\n"
+            f"{task_deadline_text(pair)}\\n"
+            f"Atlikušais laiks: **{task_time_left(pair, now)}**. "
+            "Nākamais uzdevums būs pieejams pēc 24 stundām no šī uzdevuma izdošanas.",
             ephemeral=True,
         )
+        return
+
+    mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
+    try:
+        await channel.send(
+            f"💞 **Pāra uzdevums — {pair.get('task_date', today_string())}**\\n"
+            f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
+            f"**Režīms:** {mode_label}\\n\\n"
+            f"{pair.get('task_text', '')}\\n\\n"
+            f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+            f"{task_deadline_text(pair)}\\n"
+            "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
+            "Ja abi izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
+            "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
+            view=AnswerView(),
+        )
+    except discord.HTTPException as error:
+        print(f"Neizdevās publicēt manuālo uzdevumu: {error}")
+        await interaction.response.send_message(
+            "Uzdevumu neizdevās nosūtīt. Mēģini vēlreiz pēc brīža.",
+            ephemeral=True,
+        )
+        return
+
+    pair["task_sent_date"] = now.date().isoformat()
+    pair["task_sent_at"] = now.isoformat()
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Uzdevums nosūtīts, bet piegādes statuss netika saglabāts: {error}")
+    await interaction.response.send_message(
+        "Uzdevums publicēts privātajā kanālā. Termiņš ir 24 stundas.", ephemeral=True
+    )
 
 
 @bot.tree.command(
@@ -1647,7 +1735,7 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
     if not pair or not user_is_in_guild_pair(interaction, pair):
         await interaction.response.send_message("Šo komandu vari izmantot tikai sava pāra dalībnieks.", ephemeral=True)
         return
-    if pair.get("task_date") != today_string() or not pair.get("task_text"):
+    if not task_is_active(pair):
         await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
         return
     task_type = pair.get("task_type") or infer_task_type(pair.get("task_text", ""))
