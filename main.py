@@ -188,6 +188,16 @@ TASKS["attālināti"].extend([
 
 
 TASK_DEADLINE_HOURS = 24
+TASK_ISSUE_HOUR = 9
+
+
+def next_daily_task_time(now=None):
+    """Nākamais fiksētais uzdevumu izsūtīšanas laiks: 09.00 pēc Latvijas laika."""
+    now = now or datetime.now(LATVIA_TZ)
+    scheduled = now.replace(hour=TASK_ISSUE_HOUR, minute=0, second=0, microsecond=0)
+    if now >= scheduled:
+        scheduled += timedelta(days=1)
+    return scheduled
 
 
 def parse_task_timestamp(value):
@@ -212,17 +222,15 @@ def task_deadline_at(pair):
     if saved_deadline is not None:
         return saved_deadline
     issued = task_issued_at(pair)
-    return issued + timedelta(hours=TASK_DEADLINE_HOURS) if issued else None
+    return next_daily_task_time(issued) if issued else None
 
 
 def task_is_active(pair, now=None):
-    """Aktīvs uzdevums ir izmantojams līdz 24 h termiņa beigām."""
+    """Aktīvs uzdevums pieņem atbildes līdz nākamajai fiksētajai izsūtīšanai."""
     if not pair.get("task_text"):
         return False
     now = now or datetime.now(LATVIA_TZ)
     deadline = task_deadline_at(pair)
-    # Vecos ierakstus bez laika zīmogiem saglabājam aktīvus, līdz tos droši
-    # migrē grafika cikls; tas neļauj nejauši pazaudēt pašreizējo uzdevumu.
     return deadline is None or now < deadline
 
 
@@ -281,7 +289,7 @@ def archive_current_task(pair, expired=False):
 
 
 def assign_new_task(pair, now=None):
-    """Piešķir un saglabā jaunu uzdevumu ar 24 stundu termiņu."""
+    """Piešķir uzdevumu, kas ir spēkā līdz nākamajai plkst. 09.00 izsūtīšanai."""
     now = now or datetime.now(LATVIA_TZ)
     category, task_text = choose_task_for_pair(pair)
     if not task_text:
@@ -292,20 +300,23 @@ def assign_new_task(pair, now=None):
     pair["task_sent_date"] = ""
     pair["task_sent_at"] = ""
     pair["task_issued_at"] = now.isoformat()
-    pair["task_deadline_at"] = (now + timedelta(hours=TASK_DEADLINE_HOURS)).isoformat()
+    pair["task_deadline_at"] = next_daily_task_time(now).isoformat()
     pair["task_completed"] = False
     pair["task_type"] = infer_task_type(task_text)
     pair["task_confirmations"] = []
     pair["task_proofs"] = {}
     pair["answers"] = {}
+    pair["answers_submitted_date"] = ""
+    pair["answer_dm_delivered"] = {}
     return True
 
 
 def task_deadline_text(pair):
     deadline = task_deadline_at(pair)
     if deadline is None:
-        return "⏳ Izpildes termiņš: 24 stundas no uzdevuma aktivizēšanas."
-    return f"⏳ **Izpildes termiņš:** līdz <t:{int(deadline.timestamp())}:F> (<t:{int(deadline.timestamp())}:R>)."
+        return "⏳ **Atbilžu termiņš:** līdz nākamajai plkst. 09.00 uzdevuma izsūtīšanai."
+    return f"⏳ **Atbildes pieņem līdz:** <t:{int(deadline.timestamp())}:F> (<t:{int(deadline.timestamp())}:R>)."
+
 
 def load_data():
     if not DATA_FILE.exists():
@@ -1379,47 +1390,33 @@ async def izvilkt_atbildes(interaction: discord.Interaction):
 
 
 async def publish_automatic_daily_tasks():
-    """Izsniedz jaunu uzdevumu ik pēc 24 stundām, neatkarīgi no kalendārās dienas."""
+    """Pārbauda ik minūti un izsūta uzdevumus pēc fiksēta grafika — plkst. 09.00."""
     now = datetime.now(LATVIA_TZ)
     today = now.date().isoformat()
+    scheduled_today = now.replace(hour=TASK_ISSUE_HOUR, minute=0, second=0, microsecond=0)
+    if now < scheduled_today:
+        return
 
     for pair_id, pair in list(data.get("pairs", {}).items()):
         if not pair.get("task_text"):
-            if not assign_new_task(pair, now):
-                continue
-            try:
-                save_data()
-            except OSError as error:
-                print(f"Neizdevās saglabāt automātisko uzdevumu pārim {pair_id}: {error}")
+            # Pirmais uzdevums tiek izveidots ar šodienas fiksēto 09.00 grafiku.
+            if not assign_new_task(pair, scheduled_today):
                 continue
         else:
-            issued = task_issued_at(pair)
-            if issued is None:
-                # Migrējam esošo aktīvo uzdevumu, saglabājot tā tekstu un statusu.
-                # Ja tas jau bija nosūtīts, nepublicējam to atkārtoti.
-                issued = now
-                pair["task_issued_at"] = issued.isoformat()
-                pair["task_deadline_at"] = (issued + timedelta(hours=TASK_DEADLINE_HOURS)).isoformat()
-                if pair.get("task_sent_date"):
-                    pair["task_sent_at"] = issued.isoformat()
-                try:
-                    save_data()
-                except OSError as error:
-                    print(f"Neizdevās migrēt uzdevuma termiņu pārim {pair_id}: {error}")
-                    continue
-
             deadline = task_deadline_at(pair)
+            issued = task_issued_at(pair)
+            if deadline is None:
+                # Vecam uzdevumam bez laika zīmoga saglabājam pašu uzdevumu,
+                # bet migrējam to uz nākamo fiksēto izsūtīšanas laiku.
+                pair["task_issued_at"] = scheduled_today.isoformat()
+                pair["task_deadline_at"] = scheduled_today.replace(hour=TASK_ISSUE_HOUR) .isoformat()
+                deadline = task_deadline_at(pair)
             if deadline is not None and now >= deadline:
                 archive_current_task(pair, expired=not pair.get("task_completed", False))
-                if not assign_new_task(pair, now):
-                    continue
-                try:
-                    save_data()
-                except OSError as error:
-                    print(f"Neizdevās saglabāt nākamo uzdevumu pārim {pair_id}: {error}")
+                if not assign_new_task(pair, scheduled_today):
                     continue
             elif pair.get("task_sent_at"):
-                # Ja abi pabeidza agrāk, jauns uzdevums tik un tā gaida 24 h termiņu.
+                # Uzdevums vēl ir spēkā; pat abu agrīna izpilde nemaina 09.00 grafiku.
                 continue
 
         guild = bot.get_guild(int(pair.get("guild_id", 0)))
@@ -1428,22 +1425,20 @@ async def publish_automatic_daily_tasks():
         channel = await fetch_guild_channel(guild, pair.get("tasks_channel_id"))
         if channel is None or not hasattr(channel, "send"):
             continue
-
-        # Nosūtām tikai tad, ja pašreizējais uzdevums vēl nav piegādāts.
         if pair.get("task_sent_at"):
             continue
-        deadline_line = task_deadline_text(pair)
+
         mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         try:
             await channel.send(
-                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
-                f"**Režīms:** {mode_label}\n\n"
-                f"{pair.get('task_text', '')}\n\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
-                f"{deadline_line}\n"
-                "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
-                "Ja abi to izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
+                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\\n"
+                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
+                f"**Režīms:** {mode_label}\\n\\n"
+                f"{pair.get('task_text', '')}\\n\\n"
+                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
+                f"{task_deadline_text(pair)}\\n"
+                "Atbildes un izpildes apstiprinājumus var iesniegt līdz nākamajai plkst. 09.00. "
+                "Ja abi pabeidzat agrāk, nākamais uzdevums tik un tā pienāks pēc grafika. "
                 "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
                 view=AnswerView(),
             )
@@ -1453,6 +1448,8 @@ async def publish_automatic_daily_tasks():
 
         pair["task_sent_date"] = today
         pair["task_sent_at"] = now.isoformat()
+        pair["task_issued_at"] = scheduled_today.isoformat()
+        pair["task_deadline_at"] = (scheduled_today + timedelta(days=1)).isoformat()
         try:
             save_data()
         except OSError as error:
@@ -1656,7 +1653,7 @@ async def task(interaction: discord.Interaction):
             f"**{pair.get('task_text', '')}**\n"
             f"{task_deadline_text(pair)}\n"
             f"Atlikušais laiks: **{task_time_left(pair, now)}**. "
-            "Nākamais uzdevums būs pieejams pēc 24 stundām no šī uzdevuma izdošanas.",
+            "Nākamais uzdevums tiks izsūtīts pēc fiksētā grafika — plkst. 09.00.",
             ephemeral=True,
         )
         return
@@ -1671,7 +1668,7 @@ async def task(interaction: discord.Interaction):
             f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
             f"{task_deadline_text(pair)}\n"
             "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
-            "Ja abi izpildāt agrāk, nākamais uzdevums tik un tā pienāks pēc 24 stundām. "
+             "Ja abi izpildāt agrāk, nākamais uzdevums tik un tā pienāks plkst. 09.00. "
             "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
             view=AnswerView(),
         )
@@ -1961,7 +1958,7 @@ async def help_command(interaction: discord.Interaction):
         value="Parāda šo palīdzības sarakstu.",
         inline=False,
     )
-    embed.set_footer(text="Katrs uzdevums ir spēkā 24 stundas no izdošanas brīža.")
+    embed.set_footer(text="Jauns uzdevums tiek izsūtīts katru dienu plkst. 09.00 pēc Latvijas laika.")
     await interaction.response.send_message(
         embed=embed,
         ephemeral=True,
