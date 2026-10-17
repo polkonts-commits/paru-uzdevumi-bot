@@ -6,12 +6,13 @@ Discord bots pāru izveidei, privātām istabām, ikdienas uzdevumiem un atbilž
 
 - `/pair_invite` — uzaicina servera dalībnieku izveidot pāri.
 - `/task` — parāda pašreizējo uzdevumu vai izsniedz pirmo uzdevumu pārim.
-- Katram uzdevumam ir **24 stundu termiņš no izdošanas brīža**. Ja abi to pabeidz agrāk, nākamais uzdevums tik un tā tiek izsniegts tikai pēc pilnām 24 stundām.
-- Ja 24 stundu laikā uzdevums nav pabeigts, termiņa beigās tas nonāk vēsturē un tiek izsniegts nākamais. Nepabeigtais uzdevums un tā statuss netiek dzēsts no vēstures.
+- Jauns uzdevums tiek izsūtīts katru dienu **plkst. 09.00 pēc Latvijas laika**.
+- Atbildes un izpildes apstiprinājumus var iesniegt līdz nākamajai plkst. 09.00. Ja abi uzdevumu pabeidz agrāk, izsūtīšanas laiks nemainās.
+- Plkst. 09.00 iepriekšējais uzdevums nonāk vēsturē un tiek izsūtīts nākamais. Nepabeigtais uzdevums un tā statuss tiek saglabāts vēsturē.
 - `/answer teksts` — saglabā lietotāja atbildi un apstiprina iesniegšanu.
 - `/unpair` — pēc apstiprinājuma dzēš pāra kanālus un pāra datus no bota datu faila.
 
-Laika zīmogi un termiņi tiek aprēķināti pēc Latvijas laika zonas (`Europe/Riga`). Uzdevuma izpildes termiņš darbojas arī tad, ja tas šķērso pusnakti.
+Izsūtīšanas grafiks un atbilžu termiņi izmanto Latvijas laika zonu (`Europe/Riga`), arī pārejot pāri pusnaktij vai mainoties vasaras/ziemas laikam.
 
 ## Palaišana
 
