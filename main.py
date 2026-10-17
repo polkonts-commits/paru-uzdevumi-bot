@@ -1413,6 +1413,8 @@ async def publish_automatic_daily_tasks():
                 # bet migrējam to uz nākamo fiksēto izsūtīšanas laiku.
                 pair["task_issued_at"] = scheduled_today.isoformat()
                 pair["task_deadline_at"] = next_daily_task_time(now).isoformat()
+                if pair.get("task_sent_date") and not pair.get("task_sent_at"):
+                    pair["task_sent_at"] = now.isoformat()
                 deadline = task_deadline_at(pair)
             if deadline is not None and now >= deadline:
                 archive_current_task(pair, expired=not pair.get("task_completed", False))
