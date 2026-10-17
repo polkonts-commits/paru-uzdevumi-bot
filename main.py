@@ -218,11 +218,14 @@ def task_issued_at(pair):
 
 
 def task_deadline_at(pair):
+    # Grafiku nosaka nākamā fiksētā 09.00 robeža, nevis slīdošas 24 stundas.
+    issued = task_issued_at(pair)
+    if issued is not None:
+        return next_daily_task_time(issued)
     saved_deadline = parse_task_timestamp(pair.get("task_deadline_at"))
     if saved_deadline is not None:
         return saved_deadline
-    issued = task_issued_at(pair)
-    return next_daily_task_time(issued) if issued else None
+    return None
 
 
 def task_is_active(pair, now=None):
@@ -1409,7 +1412,7 @@ async def publish_automatic_daily_tasks():
                 # Vecam uzdevumam bez laika zīmoga saglabājam pašu uzdevumu,
                 # bet migrējam to uz nākamo fiksēto izsūtīšanas laiku.
                 pair["task_issued_at"] = scheduled_today.isoformat()
-                pair["task_deadline_at"] = scheduled_today.replace(hour=TASK_ISSUE_HOUR) .isoformat()
+                pair["task_deadline_at"] = next_daily_task_time(now).isoformat()
                 deadline = task_deadline_at(pair)
             if deadline is not None and now >= deadline:
                 archive_current_task(pair, expired=not pair.get("task_completed", False))
