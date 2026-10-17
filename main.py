@@ -1099,7 +1099,7 @@ async def confirm_task_completion(interaction: discord.Interaction):
         return
     today = today_string()
     if not task_is_active(pair):
-        await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
+        await interaction.response.send_message("Šim uzdevumam termiņš ir beidzies. Gaidiet nākamo uzdevumu vai atveriet /task.", ephemeral=True)
         return
     confirmations = pair.setdefault("task_confirmations", [])
     user_key = str(interaction.user.id)
@@ -1181,7 +1181,7 @@ class AnswerView(discord.ui.View):
             await interaction.response.send_message("Šī poga paredzēta tikai attiecīgā pāra dalībniekiem.", ephemeral=True)
             return
         if not task_is_active(pair):
-            await interaction.response.send_message("Šis vairs nav aktuālais dienas uzdevums. Atver jaunāko uzdevumu.", ephemeral=True)
+            await interaction.response.send_message("Šī uzdevuma termiņš ir beidzies. Atveriet pašreizējo uzdevumu ar /task.", ephemeral=True)
             return
         if str(interaction.user.id) in pair.get("answers", {}):
             await interaction.response.send_message("Tava atbilde šodien jau ir saglabāta. Otrā atbilde vēl tiek gaidīta.", ephemeral=True)
@@ -1735,7 +1735,7 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
         await interaction.response.send_message("Šo komandu vari izmantot tikai sava pāra dalībnieks.", ephemeral=True)
         return
     if not task_is_active(pair):
-        await interaction.response.send_message("Vispirms publicē šodienas uzdevumu ar /task.", ephemeral=True)
+        await interaction.response.send_message("Šim uzdevumam termiņš ir beidzies. Gaidiet nākamo uzdevumu vai atveriet /task.", ephemeral=True)
         return
     task_type = pair.get("task_type") or infer_task_type(pair.get("task_text", ""))
     if task_type == "photo" and not (fails.content_type or "").startswith("image/"):
@@ -1923,7 +1923,7 @@ async def help_command(interaction: discord.Interaction):
     )
     embed.add_field(
         name="/task",
-        value="Parāda vai nosūta šodienas pāra uzdevumu.",
+        value="Parāda pašreizējo uzdevumu un tā termiņu; ja pienācis laiks, izsniedz nākamo.",
         inline=False,
     )
     embed.add_field(
