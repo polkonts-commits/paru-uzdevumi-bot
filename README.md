@@ -10,6 +10,7 @@ Discord bots pāru izveidei, privātām istabām, ikdienas uzdevumiem un atbilž
 - Atbildes un izpildes apstiprinājumus var iesniegt līdz nākamajai plkst. 09.00. Ja abi uzdevumu pabeidz agrāk, izsūtīšanas laiks nemainās.
 - Plkst. 09.00 iepriekšējais uzdevums nonāk vēsturē un tiek izsūtīts nākamais. Nepabeigtais uzdevums un tā statuss tiek saglabāts vēsturē.
 - `/answer teksts` — saglabā lietotāja atbildi un apstiprina iesniegšanu.
+- Uzdevumu atbildes tiek nosūtītas partneriem privāti Discord DM; bots saglabā atbildes un uzdevumu vēsturi `data.json` failā.
 - `/unpair` — pēc apstiprinājuma dzēš pāra kanālus un pāra datus no bota datu faila.
 
 Izsūtīšanas grafiks un atbilžu termiņi izmanto Latvijas laika zonu (`Europe/Riga`), arī pārejot pāri pusnaktij vai mainoties vasaras/ziemas laikam.
