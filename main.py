@@ -1344,15 +1344,13 @@ async def publish_automatic_daily_tasks():
         mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         try:
             await channel.send(
-                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\\n"
-                f"**Režīms:** {mode_label}\\n\\n"
-                f"{pair.get('task_text', '')}\\n\\n"
-                f"**Izpildes veids:** {pair.get('task_type', 'general')}\\n"
-                f"{task_deadline_text(pair)}\\n"
-                "Atbildes un izpildes apstiprinājumus var iesniegt līdz nākamajai plkst. 09.00. "
-                "Ja abi pabeidzat agrāk, nākamais uzdevums tik un tā pienāks pēc grafika. "
-                "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
+                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\n"
+                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
+                f"**Režīms:** {mode_label}\n\n"
+                f"{pair.get('task_text', '')}\n\n"
+                f"⏳ **Atbildes līdz:** <t:{int(task_deadline_at(pair).timestamp())}:F>\n"
+                "Katrs atbildiet ar **✍️ Atbildēt** un atzīmējiet izpildi atsevišķi. "
+                "Foto ir pēc izvēles — pievienojiet to ar pogu **Pievienot foto**.",
                 view=AnswerView(),
             )
         except discord.HTTPException as error:
@@ -1570,11 +1568,9 @@ async def task(interaction: discord.Interaction):
             f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
             f"**Režīms:** {mode_label}\n\n"
             f"{pair.get('task_text', '')}\n\n"
-            f"**Izpildes veids:** {pair.get('task_type', 'general')}\n"
-            f"{task_deadline_text(pair)}\n"
-            "Katrs atsevišķi nospiediet **Atzīmēt izpildītu**. Uzdevums ir pabeigts, kad apstiprināt abi. "
-             "Ja abi izpildāt agrāk, nākamais uzdevums tik un tā pienāks plkst. 09.00. "
-            "Pierādījumi ir pēc izvēles — pievienojiet tos ar /task_proof.",
+            f"⏳ **Atbildes līdz:** <t:{int(task_deadline_at(pair).timestamp())}:F>\n"
+            "Katrs atbildiet ar **✍️ Atbildēt** un atzīmējiet izpildi atsevišķi. "
+            "Foto ir pēc izvēles — pievienojiet to ar pogu **Pievienot foto**.",
             view=AnswerView(),
         )
     except discord.HTTPException as error:
