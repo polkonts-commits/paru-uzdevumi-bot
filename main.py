@@ -308,6 +308,7 @@ def assign_new_task(pair, now=None):
     pair["task_type"] = infer_task_type(task_text)
     pair["task_confirmations"] = []
     pair["task_proofs"] = {}
+    pair["task_proofs_delivery"] = {}
     pair["answers"] = {}
     pair["answers_submitted_date"] = ""
     pair["answer_dm_delivered"] = {}
@@ -1014,6 +1015,66 @@ def completion_summary(pair: dict) -> str:
     return f"{len(confirmed.intersection(members))}/2"
 
 
+async def deliver_task_proofs_dm(pair: dict, reason: str) -> tuple[int, int]:
+    """Nosūta visus uzdevuma pierādījumus abiem partneriem tikai DM, bez kanālu publicēšanas."""
+    proofs = pair.get("task_proofs", {})
+    members = [str(uid) for uid in pair.get("members", [])]
+    if not proofs or not members:
+        return 0, 0
+
+    delivery = pair.setdefault("task_proofs_delivery", {})
+    sent = 0
+    failed = 0
+    task_date = pair.get("task_date", today_string())
+    for proof_owner, proof in proofs.items():
+        if not isinstance(proof, dict):
+            continue
+        for recipient_id in members:
+            delivery_key = f"{proof_owner}:{recipient_id}"
+            if delivery.get(delivery_key) == "sent":
+                continue
+            try:
+                recipient = await bot.fetch_user(int(recipient_id))
+                filename = Path(str(proof.get("filename") or "pieradijums")).name
+                file_path = Path(str(proof.get("file_path") or ""))
+                message = (
+                    f"💞 **Pāra uzdevuma pierādījums — {task_date}**\n"
+                    f"**Uzdevums:** {pair.get('task_text', '')}\n"
+                    f"**Iesniedza:** <@{proof_owner}>\n"
+                    f"**Piegādes iemesls:** {reason}"
+                )
+                if proof.get("file_path") and file_path.is_file():
+                    await recipient.send(
+                        message,
+                        file=discord.File(str(file_path), filename=filename),
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                elif proof.get("url"):
+                    # Savietojamība ar pierādījumiem, kas tika pievienoti vecajā versijā.
+                    await recipient.send(
+                        f"{message}\nVecais pierādījums: {proof['url']}",
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                else:
+                    raise FileNotFoundError(f"Nav pieejams pierādījuma fails: {file_path}")
+                delivery[delivery_key] = "sent"
+                sent += 1
+                try:
+                    save_data()
+                except OSError as error:
+                    print(f"Pierādījums nosūtīts, bet piegādes statuss nav saglabāts: {error}")
+            except (discord.Forbidden, discord.HTTPException, OSError, ValueError) as error:
+                failed += 1
+                delivery[delivery_key] = "failed"
+                print(f"Neizdevās nosūtīt uzdevuma pierādījumu DM lietotājam {recipient_id}: {error}")
+
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Neizdevās saglabāt pierādījumu DM piegādes statusu: {error}")
+    return sent, failed
+
+
 async def confirm_task_completion(interaction: discord.Interaction):
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair or not user_is_in_guild_pair(interaction, pair):
@@ -1057,20 +1118,19 @@ async def confirm_task_completion(interaction: discord.Interaction):
             else:
                 pair["streak"] = 1
             pair["last_completed_date"] = today
+        sent_proofs, failed_proofs = await deliver_task_proofs_dm(
+            pair, "abi partneri apstiprināja izpildi"
+        )
+        if failed_proofs:
+            print(f"Uzdevuma pierādījumu DM piegāde: {sent_proofs} nosūtīti, {failed_proofs} neizdevās.")
         history_channel = await fetch_guild_channel(interaction.guild, pair.get("history_channel_id"))
         if history_channel is not None and hasattr(history_channel, "send"):
-            proof_lines = [
-                f"<@{uid}> pievienotais pierādījums: {proof['url']}"
-                for uid, proof in pair.get("task_proofs", {}).items()
-                if isinstance(proof, dict) and proof.get("url")
-            ]
-            extra = "\n" + "\n".join(proof_lines) if proof_lines else ""
             try:
                 await history_channel.send(
                     f"✅ **Uzdevums izpildīts — {today}**\n"
                     f"**Uzdevums:** {pair.get('task_text', '')}\n"
                     f"**Veids:** {pair.get('task_type', 'general')}\n"
-                    f"Abi partneri apstiprināja izpildi.{extra}",
+                    "Abi partneri apstiprināja izpildi. Pierādījumi netiek publicēti kanālos.",
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except discord.HTTPException as error:
@@ -1119,9 +1179,9 @@ class AnswerView(discord.ui.View):
             )
             return
         await interaction.response.send_message(
-            "📷 Lai pievienotu foto, izmanto komandu **/task_proof** un izvēlies attēla failu. "
-            "Kad abi būs iesnieguši atbildes, foto varēs publicēt vēsturē ar **/izvilkt_bildes**. "
-            "Discord pogas tieši neatver faila izvēlni.",
+            "🔒 Lai pievienotu foto, izmanto **/task_proof** un izvēlies failu. "
+            "Pierādījums tiek saglabāts privāti un nosūtīts abu partneru DM pēc abu apstiprinājuma "
+            "vai termiņa beigās plkst. 09.00. Discord pogas tieši neatver faila izvēlni.",
             ephemeral=True,
         )
 
@@ -1325,6 +1385,15 @@ async def publish_automatic_daily_tasks():
                     pair["task_sent_at"] = now.isoformat()
                 deadline = task_deadline_at(pair)
             if deadline is not None and now >= deadline:
+                if not pair.get("task_completed", False):
+                    sent_proofs, failed_proofs = await deliver_task_proofs_dm(
+                        pair, "uzdevuma termiņš beidzās plkst. 09.00"
+                    )
+                    if failed_proofs:
+                        print(
+                            f"Termiņa pierādījumu piegāde pārim {pair_id}: "
+                            f"{sent_proofs} nosūtīti, {failed_proofs} neizdevās."
+                        )
                 archive_current_task(pair, expired=not pair.get("task_completed", False))
                 if not assign_new_task(pair, scheduled_today):
                     continue
@@ -1640,32 +1709,35 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
         await interaction.response.send_message("Šim foto uzdevumam pievieno attēla failu.", ephemeral=True)
         return
 
-    channel = await fetch_guild_channel(interaction.guild, pair.get("tasks_channel_id"))
-    if channel is None or not hasattr(channel, "send"):
-        await interaction.response.send_message("Pāra uzdevumu kanāls nav pieejams pierādījuma pievienošanai.", ephemeral=True)
-        return
     await interaction.response.defer(ephemeral=True, thinking=True)
-    try:
-        proof_message = await channel.send(
-            content=f"📎 Pierādījums no <@{interaction.user.id}> uzdevumam: {pair.get('task_text', '')[:150]}",
-            file=await fails.to_file(),
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-    except (discord.HTTPException, OSError) as error:
-        print(f"Neizdevās ievietot pierādījumu pāra kanālā: {error}")
-        await interaction.followup.send("Pierādījumu neizdevās pievienot pāra kanālam. Mēģini vēlreiz.", ephemeral=True)
-        return
-
     proofs = pair.setdefault("task_proofs", {})
     user_key = str(interaction.user.id)
     old_proof = proofs.get(user_key)
+    proof_dir = DATA_FILE.parent / "private_proofs"
+    safe_filename = Path(fails.filename or "pieradijums").name
+    unique_name = f"{user_key}_{int(datetime.now(LATVIA_TZ).timestamp())}_{safe_filename}"
+    proof_path = proof_dir / unique_name
+    try:
+        proof_dir.mkdir(parents=True, exist_ok=True)
+        proof_path.write_bytes(await fails.read())
+    except (discord.HTTPException, OSError) as error:
+        print(f"Neizdevās saglabāt privāto pierādījumu: {error}")
+        await interaction.followup.send(
+            "Pierādījumu neizdevās saglabāt privāti. Mēģini vēlreiz.",
+            ephemeral=True,
+        )
+        return
+
     proofs[user_key] = {
-        "url": proof_message.attachments[0].url if proof_message.attachments else "",
-        "message_id": proof_message.id,
-        "filename": fails.filename,
+        "file_path": str(proof_path),
+        "filename": safe_filename,
         "content_type": fails.content_type or "",
         "uploaded_at": datetime.now(LATVIA_TZ).isoformat(),
     }
+    pair.setdefault("task_proofs_delivery", {})
+    # Ja to pašu dalībnieka pierādījumu nomaina, atiestatām tikai šī faila piegādes statusus.
+    for recipient_id in pair.get("members", []):
+        pair["task_proofs_delivery"].pop(f"{user_key}:{recipient_id}", None)
     try:
         save_data()
     except OSError as error:
@@ -1673,18 +1745,26 @@ async def task_proof(interaction: discord.Interaction, fails: discord.Attachment
             proofs.pop(user_key, None)
         else:
             proofs[user_key] = old_proof
-        print(f"Neizdevās saglabāt uzdevuma pierādījumu: {error}")
-        await interaction.followup.send("Pierādījums pievienots kanālam, bet tā statuss netika saglabāts. Mēģini vēlreiz.", ephemeral=True)
+        try:
+            proof_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        print(f"Neizdevās saglabāt uzdevuma pierādījuma statusu: {error}")
+        await interaction.followup.send(
+            "Pierādījums netika saglabāts datu failā. Mēģini vēlreiz.",
+            ephemeral=True,
+        )
         return
     await interaction.followup.send(
-        "Pierādījums pievienots jūsu privātajā pāra kanālā; tas nav publicēts citur.",
+        "🔒 Pierādījums saglabāts privāti. Tas netiek ievietots Discord kanālos; "
+        "abi partneri to saņems DM, kad abi apstiprinās izpildi vai kad termiņš beigsies plkst. 09.00.",
         ephemeral=True,
     )
 
 
 @bot.tree.command(
     name="izvilkt_bildes",
-    description="Piespiedu kārtā publicē saglabātos šodienas foto vēstures kanālā",
+    description="Parāda informāciju par privātu pierādījumu piegādi",
 )
 async def izvilkt_bildes(interaction: discord.Interaction):
     _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
@@ -1693,62 +1773,13 @@ async def izvilkt_bildes(interaction: discord.Interaction):
             "Šo komandu var izmantot tikai sava pāra serverī.", ephemeral=True
         )
         return
-
-    proofs = pair.get("task_proofs", {})
-    saved_proofs = [
-        (str(uid), proof) for uid, proof in proofs.items()
-        if isinstance(proof, dict) and proof.get("url")
-    ]
-    if not saved_proofs:
-        await interaction.response.send_message(
-            "Datu failā nav atrasts neviens saglabāts foto/pierādījums šodienas uzdevumam.",
-            ephemeral=True,
-        )
-        return
-
-    history_channel = await fetch_guild_channel(
-        interaction.guild, pair.get("history_channel_id")
+    count = sum(
+        1 for proof in pair.get("task_proofs", {}).values()
+        if isinstance(proof, dict) and (proof.get("file_path") or proof.get("url"))
     )
-    if history_channel is None or not hasattr(history_channel, "send"):
-        await interaction.response.send_message(
-            "Pāra vēstures kanāls nav pieejams.", ephemeral=True
-        )
-        return
-
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    published = 0
-    for uid, proof in saved_proofs:
-        member = interaction.guild.get_member(int(uid))
-        if member is None:
-            try:
-                member = await interaction.guild.fetch_member(int(uid))
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
-                member = None
-        name = member.display_name if member is not None else f"Dalībnieks {uid}"
-        embed = discord.Embed(
-            title=f"📷 Saglabātais foto — {name}",
-            description=(
-                f"**Uzdevums:** {pair.get('task_text', 'Nav norādīts')}"
-                f"\n**Datums:** {pair.get('task_date', today_string())}"
-                f"\n[Atvērt oriģinālo failu]({proof['url']})"
-            ),
-            color=discord.Color.from_rgb(190, 70, 120),
-        )
-        if (proof.get("content_type") or "").startswith("image/"):
-            embed.set_image(url=proof["url"])
-        try:
-            await history_channel.send(
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-            published += 1
-        except discord.HTTPException as error:
-            print(f"Neizdevās publicēt saglabāto foto vēsturē: {error}")
-
-    await interaction.followup.send(
-        f"Publicēti **{published}/{len(saved_proofs)}** saglabātie foto/pierādījumi "
-        f"kanālā <#{pair.get('history_channel_id')}>. "
-        "Atkārtota komandas palaišana publicēs tos vēlreiz.",
+    await interaction.response.send_message(
+        f"🔒 Saglabāti pierādījumi: **{count}**. Šī komanda tos vairs nepublicē kanālos. "
+        "Pierādījumi tiek nosūtīti abu partneru DM pēc abu apstiprinājuma vai termiņa beigās plkst. 09.00.",
         ephemeral=True,
     )
 
@@ -1836,12 +1867,12 @@ async def help_command(interaction: discord.Interaction):
     )
     embed.add_field(
         name="/task_proof",
-        value="Pievieno izvēles pierādījumu; foto uzdevumiem pieņem attēlu.",
+        value="Saglabā izvēles pierādījumu privāti. Abi partneri to saņem DM pēc abu izpildes apstiprinājuma vai termiņa beigās plkst. 09.00.",
         inline=False,
     )
     embed.add_field(
         name="/izvilkt_bildes",
-        value="Piespiedu kārtā publicē datu failā saglabātos šodienas foto vēstures kanālā. Atkārtota palaišana veidos dublikātus.",
+        value="Parāda privāto pierādījumu piegādes kārtību; foto netiek publicēti kanālos.",
         inline=False,
     )
     embed.add_field(
