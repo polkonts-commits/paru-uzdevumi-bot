@@ -1592,6 +1592,15 @@ async def task(interaction: discord.Interaction):
 
     if not active:
         if pair.get("task_text"):
+            if not pair.get("task_completed", False):
+                sent_proofs, failed_proofs = await deliver_task_proofs_dm(
+                    pair, "uzdevuma termiņš beidzās plkst. 09.00"
+                )
+                if failed_proofs:
+                    print(
+                        f"/task termiņa pierādījumu piegāde: "
+                        f"{sent_proofs} nosūtīti, {failed_proofs} neizdevās."
+                    )
             archive_current_task(pair, expired=not pair.get("task_completed", False))
         if not assign_new_task(pair, now):
             await interaction.response.send_message(
