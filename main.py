@@ -1177,6 +1177,39 @@ async def confirm_task_completion(interaction: discord.Interaction):
     )
 
 
+def build_daily_task_embed(pair: dict) -> discord.Embed:
+    """Veido kompaktu, telefonā ērti lasāmu dienas uzdevuma kartīti."""
+    mode_label = MODE_LABELS.get(
+        pair.get("task_mode", "random"), MODE_LABELS["random"]
+    )
+    embed = discord.Embed(
+        title="💞 ŠODIENAS PĀRA UZDEVUMS",
+        description=(
+            f"{pair.get('task_text', '')}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "✨ **Kā piedalīties**\n"
+            "Katram partnerim pietiek **vai nu iesniegt atbildi, vai nospiest "
+            "„Atzīmēt izpildītu”**. Foto pievienošana ir brīvprātīga."
+        ),
+        color=discord.Color.from_rgb(232, 67, 147),
+    )
+    embed.add_field(
+        name="🏷️ Kategorija",
+        value=pair.get("task_category", "Izaicinājums"),
+        inline=True,
+    )
+    embed.add_field(name="🎯 Režīms", value=mode_label, inline=True)
+    deadline = task_deadline_at(pair)
+    if deadline is not None:
+        embed.add_field(
+            name="⏳ Termiņš",
+            value=f"<t:{int(deadline.timestamp())}:F>\n<t:{int(deadline.timestamp())}:R>",
+            inline=False,
+        )
+    embed.set_footer(text="Pāru Uzdevumi • Nākamais uzdevums plkst. 09.00 pēc Latvijas laika")
+    return embed
+
+
 class AnswerView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -1457,13 +1490,7 @@ async def publish_automatic_daily_tasks():
         mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
         try:
             await channel.send(
-                f"💞 **Pāra uzdevums — {pair.get('task_date', today)}**\n"
-                f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
-                f"**Režīms:** {mode_label}\n\n"
-                f"{pair.get('task_text', '')}\n\n"
-                f"⏳ **Atbildes līdz:** <t:{int(task_deadline_at(pair).timestamp())}:F>\n"
-                "Katrs atbildiet ar **✍️ Atbildēt** un atzīmējiet izpildi atsevišķi. "
-                "Foto ir pēc izvēles — pievienojiet to ar pogu **Pievienot foto**.",
+                embed=build_daily_task_embed(pair),
                 view=AnswerView(),
             )
         except discord.HTTPException as error:
@@ -1686,13 +1713,7 @@ async def task(interaction: discord.Interaction):
     mode_label = MODE_LABELS.get(pair.get("task_mode", "random"), MODE_LABELS["random"])
     try:
         await channel.send(
-            f"💞 **Pāra uzdevums — {pair.get('task_date', today_string())}**\n"
-            f"**Kategorija:** {pair.get('task_category', 'Izaicinājums')}\n"
-            f"**Režīms:** {mode_label}\n\n"
-            f"{pair.get('task_text', '')}\n\n"
-            f"⏳ **Atbildes līdz:** <t:{int(task_deadline_at(pair).timestamp())}:F>\n"
-            "Katrs atbildiet ar **✍️ Atbildēt** un atzīmējiet izpildi atsevišķi. "
-            "Foto ir pēc izvēles — pievienojiet to ar pogu **Pievienot foto**.",
+            embed=build_daily_task_embed(pair),
             view=AnswerView(),
         )
     except discord.HTTPException as error:
