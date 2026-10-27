@@ -1015,6 +1015,47 @@ def completion_summary(pair: dict) -> str:
     return f"{len(confirmed.intersection(members))}/2"
 
 
+def member_task_done(pair: dict, member_id: str) -> bool:
+    """Katram partnerim pietiek vai nu ar atbildi, vai ar izpildes apstiprinājumu."""
+    answers = pair.get("answers", {})
+    submitted = (
+        member_id in answers
+        or pair.get("answers_submitted_date") == pair.get("task_date")
+        and int(pair.get("answers_submitted_count", 0)) >= 2
+    )
+    confirmed = {str(uid) for uid in pair.get("task_confirmations", [])}
+    return submitted or member_id in confirmed
+
+
+def pair_task_done(pair: dict) -> bool:
+    members = [str(uid) for uid in pair.get("members", [])]
+    return len(members) == 2 and all(member_task_done(pair, uid) for uid in members)
+
+
+def mark_task_completed(pair: dict, today: str) -> bool:
+    """Vienreiz atjauno streak un izpildīto uzdevumu skaitu, kad abi partneri ir pabeiguši."""
+    if pair.get("task_completed") or not pair_task_done(pair):
+        return False
+    pair["task_completed"] = True
+    pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
+    last_date = pair.get("last_completed_date", "")
+    if last_date != today:
+        if last_date:
+            try:
+                previous_day = datetime.fromisoformat(last_date).date()
+                current_day = datetime.fromisoformat(today).date()
+                pair["streak"] = (
+                    int(pair.get("streak", 0)) + 1
+                    if (current_day - previous_day).days == 1 else 1
+                )
+            except ValueError:
+                pair["streak"] = 1
+        else:
+            pair["streak"] = 1
+        pair["last_completed_date"] = today
+    return True
+
+
 async def deliver_task_proofs_dm(pair: dict, reason: str) -> tuple[int, int]:
     """Nosūta visus uzdevuma pierādījumus abiem partneriem tikai DM, bez kanālu publicēšanas."""
     proofs = pair.get("task_proofs", {})
@@ -1101,25 +1142,9 @@ async def confirm_task_completion(interaction: discord.Interaction):
         await interaction.response.send_message("Apstiprinājumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
         return
 
-    members = {str(uid) for uid in pair.get("members", [])}
-    confirmed = {str(uid) for uid in confirmations}
-    if members.issubset(confirmed) and not pair.get("task_completed", False):
-        pair["task_completed"] = True
-        pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
-        last_date = pair.get("last_completed_date", "")
-        if last_date != today:
-            if last_date:
-                try:
-                    previous_day = datetime.fromisoformat(last_date).date()
-                    current_day = datetime.fromisoformat(today).date()
-                    pair["streak"] = int(pair.get("streak", 0)) + 1 if (current_day - previous_day).days == 1 else 1
-                except ValueError:
-                    pair["streak"] = 1
-            else:
-                pair["streak"] = 1
-            pair["last_completed_date"] = today
+    if mark_task_completed(pair, today):
         sent_proofs, failed_proofs = await deliver_task_proofs_dm(
-            pair, "abi partneri apstiprināja izpildi"
+            pair, "abi partneri pabeidza uzdevumu ar atbildi vai apstiprinājumu"
         )
         if failed_proofs:
             print(f"Uzdevuma pierādījumu DM piegāde: {sent_proofs} nosūtīti, {failed_proofs} neizdevās.")
@@ -1140,14 +1165,14 @@ async def confirm_task_completion(interaction: discord.Interaction):
         except OSError as error:
             print(f"Neizdevās saglabāt uzdevuma izpildi: {error}")
         await interaction.response.send_message(
-            f"🎉 Abi partneri apstiprināja uzdevuma izpildi! Kopā izpildīti: {pair.get('completed_tasks', 0)}; "
-            f"sērija: {pair.get('streak', 0)} dienas.",
+            f"🎉 Abi partneri pabeidza uzdevumu! Katram pietika ar atbildi vai izpildes apstiprinājumu. "
+            f"Kopā izpildīti: {pair.get('completed_tasks', 0)}; sērija: {pair.get('streak', 0)} dienas.",
             ephemeral=True,
         )
         return
     await interaction.response.send_message(
-        f"Apstiprinājums saglabāts. Izpildi apstiprinājuši **{completion_summary(pair)}** partneri. "
-        "Uzdevums būs pabeigts, kad apstiprināsiet abi.",
+        f"Apstiprinājums saglabāts. Uzdevumu pabeiguši **{sum(1 for uid in pair.get('members', []) if member_task_done(pair, str(uid)))} / 2** partneri "
+        "(katram pietiek ar atbildi vai apstiprinājumu).",
         ephemeral=True,
     )
 
@@ -1288,15 +1313,34 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
 
     members = [str(member_id) for member_id in pair.get("members", [])]
     submitted_count = sum(1 for member_id in members if member_id in answers)
+    completed_now = mark_task_completed(pair, today)
     if submitted_count < 2:
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt uzdevuma pabeigšanas statusu: {error}")
+        if completed_now:
+            sent_proofs, failed_proofs = await deliver_task_proofs_dm(
+                pair, "abi partneri pabeidza uzdevumu ar atbildi vai apstiprinājumu"
+            )
+            if failed_proofs:
+                print(f"Uzdevuma pierādījumu DM piegāde: {sent_proofs} nosūtīti, {failed_proofs} neizdevās.")
+        done_count = sum(1 for member_id in members if member_task_done(pair, member_id))
         await interaction.response.send_message(
-            "Atbilde saglabāta privāti. Iesniegta 1/2 atbildes. "
-            "Partnera atbilde tev netiks parādīta, kamēr abi nebūs atbildējuši.",
+            f"Atbilde saglabāta privāti. Uzdevumu pabeiguši **{done_count}/2** partneri. "
+            "Katram pietiek vai nu ar atbildi, vai ar pogu **Atzīmēt izpildītu**. "
+            "Partnera atbilde netiks parādīta, kamēr abi nebūs iesnieguši atbildi.",
             ephemeral=True,
         )
         return
 
     await interaction.response.defer(ephemeral=True, thinking=True)
+    if completed_now:
+        sent_proofs, failed_proofs = await deliver_task_proofs_dm(
+            pair, "abi partneri pabeidza uzdevumu ar atbildi vai apstiprinājumu"
+        )
+        if failed_proofs:
+            print(f"Uzdevuma pierādījumu DM piegāde: {sent_proofs} nosūtīti, {failed_proofs} neizdevās.")
     delivered_count, pending_count = await deliver_answers_privately(interaction, pair, today)
     if pending_count:
         await interaction.followup.send(
