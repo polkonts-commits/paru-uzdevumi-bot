@@ -1818,7 +1818,7 @@ async def premium(interaction: discord.Interaction):
 )
 @app_commands.describe(kategorija="Izvēles uzdevumu kategorija")
 @app_commands.choices(kategorija=[
-    app_commands.Choice(name="Nejauša kategorija", value=""),
+    app_commands.Choice(name="Nejauša kategorija", value="Nejauši"),
     app_commands.Choice(name="Romantika", value="Romantika"),
     app_commands.Choice(name="Iepazīšanās", value="Iepazīšanās"),
     app_commands.Choice(name="Humors", value="Humors"),
@@ -1855,7 +1855,7 @@ async def random_quest(
         (category, task_text)
         for group in groups
         for category, task_text in group
-        if not kategorija or category == kategorija
+        if kategorija == "Nejauši" or not kategorija or category == kategorija
     ]
     if not available:
         await interaction.response.send_message(
