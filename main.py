@@ -340,6 +340,50 @@ def load_data():
 
 data = load_data()
 
+# Premium dati tiek glabāti tajā pašā JSON failā, nepārveidojot esošos pāru ierakstus.
+data.setdefault("premium_users", {})
+data.setdefault("premium_gifts", {})
+
+
+PREMIUM_MONTHLY_PRICE_EUR = 0.99
+
+
+def premium_record_is_active(record, now=None):
+    if not isinstance(record, dict):
+        return False
+    expires_at = parse_task_timestamp(record.get("expires_at"))
+    now = now or datetime.now(LATVIA_TZ)
+    return expires_at is not None and expires_at > now
+
+
+def user_has_paid_premium(user_id):
+    record = data.get("premium_users", {}).get(str(user_id))
+    return premium_record_is_active(record)
+
+
+async def interaction_has_premium(interaction, pair=None):
+    # Bota lietotnes īpašniekam vienmēr ir Unlimited — nav jāveic maksājums.
+    if await bot.is_owner(interaction.user):
+        return True
+    if user_has_paid_premium(interaction.user.id):
+        return True
+    # Pircēja pašreizējais partneris iegūst Premium piekļuvi tikai šajā pārī.
+    if pair:
+        for member_id in pair.get("members", []):
+            if int(member_id) != int(interaction.user.id) and user_has_paid_premium(member_id):
+                return True
+    return False
+
+
+def premium_status_text(user_id):
+    record = data.get("premium_users", {}).get(str(user_id))
+    if not premium_record_is_active(record):
+        return "Nav aktīva maksas abonementa."
+    expires_at = parse_task_timestamp(record.get("expires_at"))
+    return f"Aktīvs līdz <t:{int(expires_at.timestamp())}:F>."
+
+
+
 
 def save_data():
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -1735,6 +1779,169 @@ async def task(interaction: discord.Interaction):
     )
 
 
+
+@bot.tree.command(
+    name="premium",
+    description="Parāda Premium statusu un iespējas",
+)
+async def premium(interaction: discord.Interaction):
+    is_owner = await bot.is_owner(interaction.user)
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    has_access = await interaction_has_premium(interaction, pair)
+    embed = discord.Embed(
+        title="💎 Pāru Uzdevumi Premium",
+        description=(
+            "**0,99 € / mēnesī** — plānotā abonementa cena.\n\n"
+            "Premium paredzēts nejaušajiem uzdevumiem jebkurā laikā, papildu kategorijām "
+            "un īpašiem pāru izaicinājumiem."
+        ),
+        color=discord.Color.from_rgb(232, 67, 147),
+    )
+    if is_owner:
+        embed.add_field(name="👑 Tavs statuss", value="UNLIMITED — īpašnieka piekļuve bez maksas.", inline=False)
+    elif has_access:
+        embed.add_field(name="💎 Tavs statuss", value="Premium piekļuve ir aktīva.", inline=False)
+    else:
+        embed.add_field(name="Tavs statuss", value=premium_status_text(interaction.user.id), inline=False)
+    embed.add_field(
+        name="🎁 Dāvināšana",
+        value="Premium dāvanas būs pieejamas pēc maksājumu sistēmas pieslēgšanas.",
+        inline=False,
+    )
+    embed.set_footer(text="Abonements būs piesaistīts pircēja Discord kontam.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(
+    name="random_quest",
+    description="Pieprasi papildu nejaušu pāra uzdevumu (Premium)",
+)
+@app_commands.describe(kategorija="Izvēles uzdevumu kategorija")
+@app_commands.choices(kategorija=[
+    app_commands.Choice(name="Nejauša kategorija", value=""),
+    app_commands.Choice(name="Romantika", value="Romantika"),
+    app_commands.Choice(name="Iepazīšanās", value="Iepazīšanās"),
+    app_commands.Choice(name="Humors", value="Humors"),
+    app_commands.Choice(name="Izaicinājums", value="Izaicinājums"),
+    app_commands.Choice(name="Komunikācija", value="Komunikācija"),
+    app_commands.Choice(name="Kopīga nākotne", value="Kopīga nākotne"),
+    app_commands.Choice(name="Atmiņas", value="Atmiņas"),
+    app_commands.Choice(name="Ikdiena", value="Ikdiena"),
+    app_commands.Choice(name="Spēle", value="Spēle"),
+    app_commands.Choice(name="Tuvība", value="Tuvība"),
+    app_commands.Choice(name="18+", value="18+"),
+])
+async def random_quest(
+    interaction: discord.Interaction,
+    kategorija: str = "",
+):
+    _, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Šo komandu vari izmantot tikai sava pāra Discord serverī.",
+            ephemeral=True,
+        )
+        return
+    if not await interaction_has_premium(interaction, pair):
+        await interaction.response.send_message(
+            "🎲 Nejaušie uzdevumi ir Premium funkcija. Izmanto /premium, lai apskatītu piekļuves iespējas.",
+            ephemeral=True,
+        )
+        return
+
+    mode = pair.get("task_mode", "random")
+    groups = [TASKS[mode]] if mode in TASKS else list(TASKS.values())
+    available = [
+        (category, task_text)
+        for group in groups
+        for category, task_text in group
+        if not kategorija or category == kategorija
+    ]
+    if not available:
+        await interaction.response.send_message(
+            "Šajā režīmā izvēlētajai kategorijai pašlaik nav uzdevumu.",
+            ephemeral=True,
+        )
+        return
+
+    category, task_text = random.choice(available)
+    embed = discord.Embed(
+        title="🎲 PREMIUM — NEJAUŠAIS UZDEVUMS",
+        description=(
+            f"{task_text}\n\n"
+            "Šis ir papildu uzdevums — tas neaizstāj jūsu ikdienas uzdevumu "
+            "un nemaina plkst. 09.00 izsūtīšanas grafiku."
+        ),
+        color=discord.Color.from_rgb(232, 67, 147),
+    )
+    embed.add_field(name="🏷️ Kategorija", value=category, inline=True)
+    embed.add_field(name="🎯 Režīms", value=MODE_LABELS.get(mode, MODE_LABELS["random"]), inline=True)
+    embed.set_footer(text="Pāru Uzdevumi Premium")
+    channel = await fetch_guild_channel(interaction.guild, pair.get("tasks_channel_id"))
+    if channel is None or not hasattr(channel, "send"):
+        await interaction.response.send_message(
+            "Nevaru atrast jūsu privāto pāra uzdevumu kanālu.",
+            ephemeral=True,
+        )
+        return
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except discord.HTTPException as error:
+        print(f"Neizdevās publicēt Premium nejaušo uzdevumu: {error}")
+        await interaction.response.send_message(
+            "Uzdevumu neizdevās publicēt. Mēģini vēlreiz.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        "🎲 Nejaušais Premium uzdevums publicēts jūsu privātajā pāra kanālā.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="premium_grant",
+    description="Piešķir Premium testa piekļuvi lietotājam (tikai bota īpašniekam)",
+)
+@app_commands.describe(lietotajs="Lietotājs, kuram piešķirt testa Premium", dienas="Piekļuves ilgums dienās")
+async def premium_grant(
+    interaction: discord.Interaction,
+    lietotajs: discord.User,
+    dienas: app_commands.Range[int, 1, 3650] = 30,
+):
+    if not await bot.is_owner(interaction.user):
+        await interaction.response.send_message(
+            "Šī testa komanda pieejama tikai bota īpašniekam.",
+            ephemeral=True,
+        )
+        return
+    now = datetime.now(LATVIA_TZ)
+    key = str(lietotajs.id)
+    previous = data.get("premium_users", {}).get(key, {})
+    previous_expiry = parse_task_timestamp(previous.get("expires_at")) if isinstance(previous, dict) else None
+    base = previous_expiry if previous_expiry and previous_expiry > now else now
+    expiry = base + timedelta(days=int(dienas))
+    data.setdefault("premium_users", {})[key] = {
+        "expires_at": expiry.isoformat(),
+        "source": "owner_test_grant",
+        "granted_by": str(interaction.user.id),
+    }
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Neizdevās saglabāt Premium testa piekļuvi: {error}")
+        await interaction.response.send_message(
+            "Premium testa piekļuvi neizdevās saglabāt.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        f"Piešķirta testa Premium piekļuve lietotājam {lietotajs.mention} līdz <t:{int(expiry.timestamp())}:F>.",
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
 @bot.tree.command(
     name="task_mode",
     description="Izvēlies uzdevumus kopā, attālināti vai nejauši",
@@ -1927,6 +2134,16 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/task",
         value="Parāda pašreizējo uzdevumu un tā termiņu; ja pienācis laiks, izsniedz nākamo.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/premium",
+        value="Parāda Premium iespējas un piekļuves statusu.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/random_quest",
+        value="Premium lietotāji var pieprasīt papildu nejaušu uzdevumu jebkurā laikā.",
         inline=False,
     )
     embed.add_field(
