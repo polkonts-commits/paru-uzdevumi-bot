@@ -370,7 +370,16 @@ async def interaction_has_premium(interaction, pair=None):
     # Pircēja pašreizējais partneris iegūst Premium piekļuvi tikai šajā pārī.
     if pair:
         for member_id in pair.get("members", []):
-            if int(member_id) != int(interaction.user.id) and user_has_paid_premium(member_id):
+            if int(member_id) == int(interaction.user.id):
+                continue
+            if user_has_paid_premium(member_id):
+                return True
+            partner_member = (
+                interaction.guild.get_member(int(member_id))
+                if interaction.guild is not None
+                else None
+            )
+            if partner_member is not None and await bot.is_owner(partner_member):
                 return True
     return False
 
