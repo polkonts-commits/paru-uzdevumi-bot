@@ -187,6 +187,55 @@ TASKS["attālināti"].extend([
 
 
 
+# Papildinājums 2026-11: jauni uzdevumi abiem režīmiem.
+# 18+ uzdevumi ir brīvprātīgi; tie neparedz pienākumu sūtīt attēlus vai veikt ierakstus.
+TASKS["kopā"].extend([
+    ("Romantika", "Izvēlieties dziesmu, kas jums abiem asociējas ar mierīgu vakaru, un noklausieties to, nesteidzoties."),
+    ("Romantika", "Uzlieciet savu iecienīto dziesmu un padejojiet vienu dziesmu bez telefoniem, ja abiem tas patīk."),
+    ("Iepazīšanās", "Katrs pastāstiet par kādu savu ieradumu, kura nozīmi otrs, iespējams, vēl nezina."),
+    ("Iepazīšanās", "Aprakstiet, kā izskatās jūsu ideālā brīvā diena, ja nav nekādu pienākumu."),
+    ("Komunikācija", "Pārrunājiet, kādā veidā katram ir vieglāk saņemt atgriezenisko saiti — sarunā, rakstiski vai pēc nelielas pauzes."),
+    ("Komunikācija", "Katrs nosauciet vienu tēmu, par kuru gribētu biežāk parunāt, bet ikdienā tai neatliek laika."),
+    ("Ikdiena", "Izvēlieties vienu sadzīves sīkumu, ko šonedēļ varētu padarīt ērtāku jums abiem."),
+    ("Ikdiena", "Kopīgi izveidojiet vienkāršu vakara plānu, kas atstāj vismaz 15 minūtes mierīgai atpūtai."),
+    ("Izaicinājums", "Dodieties īsā pastaigā pa ielu vai maršrutu, kuru ikdienā parasti neizvēlaties."),
+    ("Izaicinājums", "No mājās pieejamajām sastāvdaļām izveidojiet jaunu uzkodu un dodiet tai nosaukumu."),
+    ("Spēle", "Izvēlieties nejaušu burtu un divās minūtēs nosauciet pēc iespējas vairāk ar to saistītu vārdu; pēc tam mainieties."),
+    ("Spēle", "Katrs izdomājiet trīs alternatīvus nosaukumus šodienas dienai un kopā izvēlieties smieklīgāko."),
+    ("Atmiņas", "Katrs pastāstiet par kādu kopīgu brīdi, kurā smējāties tik ļoti, ka bija grūti apstāties."),
+    ("Kopīga nākotne", "Izvēlieties vienu konkrētu datumu nākamajā mēnesī un ieplānojiet nelielu kopīgu notikumu."),
+    ("Tuvība", "Pajautājiet, kā partneris vēlas, lai jūs reaģējat brīžos, kad viņš ir noguris un nevēlas daudz runāt."),
+    ("Humors", "Izveidojiet 20 sekunžu reklāmu par savu pāri, izmantojot izdomātu saukli un pārspīlētu balsi."),
+    ("18+", "Ja abi esat pilngadīgi un vēlaties, pārrunājiet, vai šobrīd ir piemērots brīdis intīmai sarunai un vai vide ir pietiekami privāta; sarunu var atlikt."),
+    ("18+", "Ja abiem ir ērti, katrs nosauciet, vai šobrīd vairāk vēlaties flirtu, romantisku tuvību vai mierīgu kopā būšanu; jebkura atbilde ir pieņemama."),
+    ("18+", "Vienojieties, ka personiskus attēlus vai ziņas nesaglabāsiet un nepārsūtīsiet bez to autora skaidras piekrišanas."),
+    ("18+", "Ja abi esat pilngadīgi un piekrītat, ieplānojiet juteklisku vakaru bez foto vai video ierakstiem; jebkurš var jebkurā brīdī apstāties."),
+])
+
+TASKS["attālināti"].extend([
+    ("Romantika", "Nosūtiet partnerim īsu balss ziņu par vienu mazu lietu, ko ar viņu gribēsiet izdarīt nākamajā tikšanās reizē."),
+    ("Romantika", "Vienojieties par vienu brīdi, kad abi vienlaikus paskatīsieties ārā pa logu, un pēc tam pastāstiet, ko redzējāt."),
+    ("Iepazīšanās", "Katrs aprakstiet, kāds būtu jūsu ideālais brīvais rīts bez steigas un pienākumiem."),
+    ("Iepazīšanās", "Pastāstiet par vienu prasmi vai hobiju, ko pēdējā laikā esat vēlējušies izmēģināt."),
+    ("Komunikācija", "Novērtējiet savu šībrīža enerģiju skalā no 1 līdz 5 un pasakiet, kāda saziņa jums šovakar būtu visērtākā."),
+    ("Komunikācija", "Ja ir kāds jautājums, ko atliekat, pajautājiet, vai partnerim būtu ērti to pārrunāt tagad vai citā laikā."),
+    ("Ikdiena", "Vienojieties par 30 minūšu laiku bez paziņojumiem un pēc tam apmainieties ar īsu ziņu par to, kā jutāties."),
+    ("Ikdiena", "Nosūtiet partnerim vienu īsu ziņu par to, kas šodien izdevās labāk, nekā gaidījāt."),
+    ("Izaicinājums", "Sarīkojiet vienlaicīgu mini degustāciju: katrs izvēlas mājās esošu dzērienu vai uzkodu un apraksta tā garšu."),
+    ("Izaicinājums", "Videozvanā parādiet trīs priekšmetus vienā izvēlētā krāsā un izdomājiet tiem kopīgu stāstu."),
+    ("Spēle", "Sāciet kopīgu stāstu: katrs pēc kārtas nosūta vienu teikumu, līdz stāstā ir vismaz astoņi teikumi."),
+    ("Spēle", "Spēlējiet attālināti “20 jautājumi”: viens izvēlas priekšmetu, otrs mēģina to uzminēt ar jā/nē jautājumiem."),
+    ("Atmiņas", "Katrs nosūtiet dziesmu no pusaudžu gadiem un pastāstiet, kādu atmiņu tā uzjundī."),
+    ("Kopīga nākotne", "Atveriet kalendāru un rezervējiet konkrētu 20 minūšu laiku nākamajam attālinātajam randiņam."),
+    ("Tuvība", "Nosūtiet ziņu, kurā skaidri pasakāt, ka partneris drīkst atbildēt sev ērtā laikā un nav jāsteidzas."),
+    ("Humors", "Nosūtiet īsu laikapstākļu prognozi, kas humoristiski raksturo jūsu šībrīža garastāvokli."),
+    ("18+", "Pirms videozvana ar romantisku vai juteklisku noskaņu vienojieties, vai abiem ir ērti ieslēgt kameru; atteikums ir pilnīgi pieņemams."),
+    ("18+", "Ja abi esat pilngadīgi un vēlaties, sarīkojiet privātu flirtējošu balss zvanu; neveiciet ierakstu un nepārsūtiet sarunas saturu."),
+    ("18+", "Katrs nosauciet vienu robežu attiecībā uz personisku attēlu sūtīšanu; foto nav jānosūta, un partnera atbilde jāpieņem bez pierunāšanas."),
+    ("18+", "Vienojieties, ka ikviens var pārtraukt intīmu sarunu vai mainīt tēmu bez paskaidrojuma un bez negatīvas reakcijas."),
+])
+
+
 TASK_DEADLINE_HOURS = 24
 TASK_ISSUE_HOUR = 9
 
