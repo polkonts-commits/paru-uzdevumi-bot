@@ -1,0 +1,51 @@
+name: Python syntax and task library checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile bot
+        run: python -m py_compile main.py
+      - name: Check task library for duplicate prompts
+        run: |
+          python - <<'PY'
+          import ast
+          from collections import Counter
+          from pathlib import Path
+
+          tree = ast.parse(Path("main.py").read_text(encoding="utf-8"))
+          categories = {
+              "Romantika", "Iepazīšanās", "Izaicinājums", "Humors", "18+",
+              "Komunikācija", "Kopīga nākotne", "Atmiņas", "Ikdiena",
+              "Spēle", "Tuvība",
+          }
+          prompts = []
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Tuple) and len(node.elts) == 2:
+                  first, second = node.elts
+                  if (
+                      isinstance(first, ast.Constant)
+                      and isinstance(first.value, str)
+                      and first.value in categories
+                      and isinstance(second, ast.Constant)
+                      and isinstance(second.value, str)
+                  ):
+                      prompts.append(second.value)
+          duplicates = [prompt for prompt, count in Counter(prompts).items() if count > 1]
+          if duplicates:
+              raise SystemExit("Duplicate task prompts found: " + repr(duplicates))
+          print(f"Python syntax OK; {len(prompts)} unique task prompts found.")
+          PY
