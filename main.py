@@ -1170,6 +1170,79 @@ def pair_task_done(pair: dict) -> bool:
     return len(members) == 2 and all(member_task_done(pair, uid) for uid in members)
 
 
+def task_progress_notice_key(pair: dict) -> str:
+    return str(
+        pair.get("task_issued_at")
+        or f"{pair.get('task_date', '')}|{pair.get('task_text', '')}"
+    )
+
+
+async def notify_pair_task_progress(pair: dict, guild, catch_up: bool = False):
+    """Publicē pāra privātajā kanālā katra partnera izpildi, nedublējot paziņojumus."""
+    members = [str(uid) for uid in pair.get("members", [])]
+    if len(members) != 2 or not pair.get("task_text"):
+        return
+    if pair.get("task_completed"):
+        done_members = set(members)
+    else:
+        done_members = {
+            member_id for member_id in members
+            if member_task_done(pair, member_id)
+        }
+    if not done_members:
+        return
+
+    channel = await fetch_guild_channel(guild, pair.get("tasks_channel_id"))
+    if channel is None or not hasattr(channel, "send"):
+        return
+
+    task_key = task_progress_notice_key(pair)
+    notice = pair.get("task_progress_notice")
+    if not isinstance(notice, dict) or notice.get("task_key") != task_key:
+        notice = {
+            "task_key": task_key,
+            "members_notified": [],
+            "both_notified": False,
+        }
+        pair["task_progress_notice"] = notice
+
+    notified = {str(uid) for uid in notice.get("members_notified", [])}
+    prefix = "ℹ️ Pēc bota atjauninājuma: " if catch_up else ""
+    for member_id in members:
+        if member_id not in done_members or member_id in notified:
+            continue
+        try:
+            await channel.send(
+                f"{prefix}✅ <@{member_id}> jau ir izpildījis šodienas uzdevumu! "
+                "Tagad gaidām otru partneri. ❤️",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException as error:
+            print(f"Neizdevās paziņot par uzdevuma izpildi pārim: {error}")
+            continue
+        notified.add(member_id)
+        notice["members_notified"] = sorted(notified)
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt uzdevuma paziņojuma statusu: {error}")
+
+    if len(done_members) == 2 and not notice.get("both_notified"):
+        try:
+            await channel.send(
+                f"{prefix}🎉 **Abi partneri jau ir izpildījuši šodienas uzdevumu!** ❤️",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException as error:
+            print(f"Neizdevās paziņot par abu partneru izpildi: {error}")
+            return
+        notice["both_notified"] = True
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt abu partneru paziņojuma statusu: {error}")
+
+
 def mark_task_completed(pair: dict, today: str) -> bool:
     """Vienreiz atjauno streak un izpildīto uzdevumu skaitu, kad abi partneri ir pabeiguši."""
     if pair.get("task_completed") or not pair_task_done(pair):
@@ -1280,6 +1353,7 @@ async def confirm_task_completion(interaction: discord.Interaction):
         await interaction.response.send_message("Apstiprinājumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
         return
 
+    await notify_pair_task_progress(pair, interaction.guild)
     if mark_task_completed(pair, today):
         sent_proofs, failed_proofs = await deliver_task_proofs_dm(
             pair, "abi partneri pabeidza uzdevumu ar atbildi vai apstiprinājumu"
@@ -1485,6 +1559,7 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
     members = [str(member_id) for member_id in pair.get("members", [])]
     submitted_count = sum(1 for member_id in members if member_id in answers)
     completed_now = mark_task_completed(pair, today)
+    await notify_pair_task_progress(pair, interaction.guild)
     if submitted_count < 2:
         try:
             save_data()
@@ -1717,10 +1792,28 @@ async def on_guild_join(guild: discord.Guild):
     await post_welcome_panel(guild)
 
 
+async def sync_existing_task_progress_notifications():
+    """Pēc atjauninājuma paziņo par šodienas uzdevumiem, kas jau ir izpildīti."""
+    for pair_id, pair in list(data.get("pairs", {}).items()):
+        if not pair.get("task_text") or not task_is_active(pair):
+            continue
+        members = [str(uid) for uid in pair.get("members", [])]
+        if not members:
+            continue
+        if pair.get("task_completed") or any(
+            member_task_done(pair, member_id) for member_id in members
+        ):
+            guild = bot.get_guild(int(pair.get("guild_id", 0)))
+            if guild is None:
+                continue
+            await notify_pair_task_progress(pair, guild, catch_up=True)
+
+
 @bot.event
 async def on_ready():
     if not daily_task_scheduler.is_running():
         daily_task_scheduler.start()
+    await sync_existing_task_progress_notifications()
     print(f"Bot: {bot.user} ir tiešsaistē")
 
 
