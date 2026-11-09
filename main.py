@@ -1178,7 +1178,7 @@ def task_progress_notice_key(pair: dict) -> str:
 
 
 async def notify_pair_task_progress(pair: dict, guild, catch_up: bool = False):
-    """Publicē pāra privātajā kanālā katra partnera izpildi, nedublējot paziņojumus."""
+    """Publicē pāra privātajā kanālā izpildes statusu, nedublējot paziņojumus."""
     members = [str(uid) for uid in pair.get("members", [])]
     if len(members) != 2 or not pair.get("task_text"):
         return
@@ -1207,40 +1207,41 @@ async def notify_pair_task_progress(pair: dict, guild, catch_up: bool = False):
         pair["task_progress_notice"] = notice
 
     notified = {str(uid) for uid in notice.get("members_notified", [])}
-    prefix = "ℹ️ Pēc bota atjauninājuma: " if catch_up else ""
-    for member_id in members:
-        if member_id not in done_members or member_id in notified:
-            continue
-        try:
-            await channel.send(
-                f"{prefix}✅ <@{member_id}> jau ir izpildījis šodienas uzdevumu! "
-                "Tagad gaidām otru partneri. ❤️",
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-        except discord.HTTPException as error:
-            print(f"Neizdevās paziņot par uzdevuma izpildi pārim: {error}")
-            continue
-        notified.add(member_id)
-        notice["members_notified"] = sorted(notified)
-        try:
-            save_data()
-        except OSError as error:
-            print(f"Neizdevās saglabāt uzdevuma paziņojuma statusu: {error}")
+    mentions = " ".join(f"<@{uid}>" for uid in members)
+    prefix = "ℹ️ Pēc bota atjauninājuma atjaunots statuss: " if catch_up else ""
 
-    if len(done_members) == 2 and not notice.get("both_notified"):
+    if len(done_members) == 2:
+        if notice.get("both_notified"):
+            return
         try:
             await channel.send(
-                f"{prefix}🎉 **Abi partneri jau ir izpildījuši šodienas uzdevumu!** ❤️",
-                allowed_mentions=discord.AllowedMentions.none(),
+                f"{prefix}{mentions}\n🎉 **Abi partneri jau ir izpildījuši šodienas uzdevumu!** ❤️",
+                allowed_mentions=discord.AllowedMentions(users=True),
             )
         except discord.HTTPException as error:
             print(f"Neizdevās paziņot par abu partneru izpildi: {error}")
             return
+        notice["members_notified"] = members
         notice["both_notified"] = True
+    else:
+        completed_member = next(iter(done_members))
+        if completed_member in notified:
+            return
         try:
-            save_data()
-        except OSError as error:
-            print(f"Neizdevās saglabāt abu partneru paziņojuma statusu: {error}")
+            await channel.send(
+                f"{prefix}{mentions}\n✅ <@{completed_member}> jau ir izpildījis savu šodienas uzdevuma daļu. "
+                "Tagad gaidām otru partneri. ❤️",
+                allowed_mentions=discord.AllowedMentions(users=True),
+            )
+        except discord.HTTPException as error:
+            print(f"Neizdevās paziņot par uzdevuma izpildi pārim: {error}")
+            return
+        notice["members_notified"] = [completed_member]
+
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Neizdevās saglabāt uzdevuma paziņojuma statusu: {error}")
 
 
 def mark_task_completed(pair: dict, today: str) -> bool:
