@@ -297,11 +297,20 @@ def task_time_left(pair, now=None):
     return f"{hours} h {minutes} min"
 
 
+def normalize_daily_task_text(task_text):
+    """Normalizē uzdevuma tekstu, lai atšķirīgas atstarpes/reģistrs neradītu dublikātus."""
+    if not isinstance(task_text, str):
+        return ""
+    return " ".join(task_text.split()).casefold()
+
+
 def choose_task_for_pair(pair):
+    """Izvēlas Daily uzdevumu bez atkārtošanas līdz attiecīgā režīma cikla beigām."""
     mode = pair.get("task_mode", "random")
     if mode not in TASKS and mode != "random":
         mode = "random"
         pair["task_mode"] = mode
+
     if mode == "random":
         available = [
             (category, task_text)
@@ -310,17 +319,44 @@ def choose_task_for_pair(pair):
         ]
     else:
         available = list(TASKS[mode])
-    used_tasks = {
-        entry.get("task", "")
-        for entry in pair.get("history", [])
-        if isinstance(entry, dict)
-    }
-    if pair.get("task_text"):
-        used_tasks.add(pair["task_text"])
-    fresh_choices = [item for item in available if item[1] not in used_tasks]
-    choices = fresh_choices or [
-        item for item in available if item[1] != pair.get("task_text")
-    ] or available
+
+    # Atbalsta gan pašreizējo vēstures formātu, gan vecākus ierakstus,
+    # kuros uzdevuma teksts var būt saglabāts ar citu atslēgu.
+    history = pair.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    used_tasks = set()
+    for entry in history:
+        if isinstance(entry, dict):
+            previous_text = entry.get("task") or entry.get("task_text") or entry.get("text")
+        elif isinstance(entry, str):
+            previous_text = entry
+        else:
+            previous_text = ""
+        normalized = normalize_daily_task_text(previous_text)
+        if normalized:
+            used_tasks.add(normalized)
+
+    current_text = pair.get("task_text", "")
+    current_normalized = normalize_daily_task_text(current_text)
+    if current_normalized:
+        used_tasks.add(current_normalized)
+
+    # Vispirms izmantojam tikai tos uzdevumus, kas šim pārim vēl nav bijuši.
+    fresh_choices = [
+        item for item in available
+        if normalize_daily_task_text(item[1]) not in used_tasks
+    ]
+    if fresh_choices:
+        return random.choice(fresh_choices)
+
+    # Ja viss saraksts iziets, sākas jauns cikls, bet neatkārtojam
+    # uzreiz pēdējo uzdevumu.
+    next_cycle_choices = [
+        item for item in available
+        if normalize_daily_task_text(item[1]) != current_normalized
+    ]
+    choices = next_cycle_choices or available
     return random.choice(choices) if choices else (None, None)
 
 
@@ -1552,6 +1588,11 @@ async def publish_automatic_daily_tasks():
             # Pirmais uzdevums tiek izveidots ar šodienas fiksēto 09.00 grafiku.
             if not assign_new_task(pair, scheduled_today):
                 continue
+            try:
+                save_data()
+            except OSError as error:
+                print(f"Neizdevās saglabāt pirmo Daily uzdevumu pārim {pair_id}: {error}")
+                continue
         else:
             deadline = task_deadline_at(pair)
             issued = task_issued_at(pair)
@@ -1575,6 +1616,14 @@ async def publish_automatic_daily_tasks():
                         )
                 archive_current_task(pair, expired=not pair.get("task_completed", False))
                 if not assign_new_task(pair, scheduled_today):
+                    continue
+                # Vispirms droši saglabājam vēsturi un jauno uzdevumu.
+                # Ja bots avarē vai kanāls nav pieejams, iepriekšējais Daily
+                # netiks pazaudēts un jaunais netiks nejauši pārzīmēts.
+                try:
+                    save_data()
+                except OSError as error:
+                    print(f"Neizdevās saglabāt Daily vēsturi pārim {pair_id}: {error}")
                     continue
             elif pair.get("task_sent_at"):
                 # Uzdevums vēl ir spēkā; pat abu agrīna izpilde nemaina 09.00 grafiku.
