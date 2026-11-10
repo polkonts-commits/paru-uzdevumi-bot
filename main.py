@@ -2198,10 +2198,19 @@ class VoiceListenedView(discord.ui.View):
         if not pair or not task_is_active(pair) or task_progress_notice_key(pair) != self.task_key:
             await interaction.response.send_message("Šis balss uzdevums vairs nav aktīvs.", ephemeral=True)
             return
+        voice_records = pair.setdefault("voice_messages", {})
+        sender_key = str(self.sender_id)
+        sender_record = voice_records.get(sender_key)
+        if not isinstance(sender_record, dict) or sender_record.get("task_key") != self.task_key:
+            await interaction.response.send_message(
+                "Balss ziņas ieraksts vairs nav pieejams.", ephemeral=True
+            )
+            return
+        sender_record["listened_at"] = datetime.now(LATVIA_TZ).isoformat()
+        sender_record["listened_by"] = str(self.recipient_id)
         confirmations = pair.setdefault("task_confirmations", [])
-        recipient_key = str(self.recipient_id)
-        if recipient_key not in {str(uid) for uid in confirmations}:
-            confirmations.append(recipient_key)
+        if sender_key not in {str(uid) for uid in confirmations}:
+            confirmations.append(sender_key)
         completed_now = mark_task_completed(pair, today_string())
         try:
             save_data()
@@ -2277,9 +2286,6 @@ async def balss_zina(interaction: discord.Interaction, fails: discord.Attachment
         "sent_at": datetime.now(LATVIA_TZ).isoformat(),
         "recipient_id": str(partner_ids[0]),
     }
-    confirmations = pair.setdefault("task_confirmations", [])
-    if sender_key not in {str(uid) for uid in confirmations}:
-        confirmations.append(sender_key)
     try:
         save_data()
     except OSError as error:
