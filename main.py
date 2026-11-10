@@ -1,4 +1,5 @@
 
+import io
 import json
 import os
 import random
@@ -394,6 +395,7 @@ def assign_new_task(pair, now=None):
     pair["task_confirmations"] = []
     pair["task_proofs"] = {}
     pair["task_proofs_delivery"] = {}
+    pair["voice_messages"] = {}
     pair["answers"] = {}
     pair["answers_submitted_date"] = ""
     pair["answer_dm_delivered"] = {}
@@ -2176,6 +2178,119 @@ async def answer(
     await submit_answer(interaction, str(teksts))
 
 
+
+class VoiceListenedView(discord.ui.View):
+    """Partnera privāts balss ziņas noklausīšanās apstiprinājums."""
+
+    def __init__(self, pair_id: str, sender_id: int, recipient_id: int, task_key: str):
+        super().__init__(timeout=86400)
+        self.pair_id = str(pair_id)
+        self.sender_id = int(sender_id)
+        self.recipient_id = int(recipient_id)
+        self.task_key = str(task_key)
+
+    @discord.ui.button(label="Noklausījos ❤️", style=discord.ButtonStyle.success)
+    async def listened(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if int(interaction.user.id) != self.recipient_id:
+            await interaction.response.send_message("Šis apstiprinājums ir paredzēts tikai saņēmējam.", ephemeral=True)
+            return
+        pair = data.get("pairs", {}).get(self.pair_id)
+        if not pair or not task_is_active(pair) or task_progress_notice_key(pair) != self.task_key:
+            await interaction.response.send_message("Šis balss uzdevums vairs nav aktīvs.", ephemeral=True)
+            return
+        confirmations = pair.setdefault("task_confirmations", [])
+        recipient_key = str(self.recipient_id)
+        if recipient_key not in {str(uid) for uid in confirmations}:
+            confirmations.append(recipient_key)
+        completed_now = mark_task_completed(pair, today_string())
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt balss ziņas noklausīšanās apstiprinājumu: {error}")
+            await interaction.response.send_message("Apstiprinājumu neizdevās saglabāt. Mēģini vēlreiz.", ephemeral=True)
+            return
+        guild = bot.get_guild(int(pair.get("guild_id", 0)))
+        if guild is not None:
+            await notify_pair_task_progress(pair, guild)
+        if completed_now:
+            await deliver_task_proofs_dm(pair, "abi partneri pabeidza balss ziņas uzdevumu")
+        button.disabled = True
+        await interaction.response.edit_message(content="❤️ Apstiprināts — balss ziņa ir noklausīta.", view=self)
+
+
+@bot.tree.command(name="balss_zina", description="Nosūti šodienas balss uzdevuma ierakstu tikai partnerim")
+@app_commands.describe(fails="Balss ziņas audio fails")
+async def balss_zina(interaction: discord.Interaction, fails: discord.Attachment):
+    pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message("Šo komandu vari izmantot tikai sava pāra Discord serverī.", ephemeral=True)
+        return
+    if not task_is_active(pair):
+        await interaction.response.send_message("Pašlaik nav aktīva uzdevuma, kuram nosūtīt balss ziņu.", ephemeral=True)
+        return
+    task_type = pair.get("task_type") or infer_task_type(pair.get("task_text", ""))
+    if task_type != "voice":
+        await interaction.response.send_message("Šodienas uzdevums nav balss ziņas uzdevums.", ephemeral=True)
+        return
+    filename = Path(fails.filename or "balss_zina.ogg").name
+    audio_extensions = (".ogg", ".oga", ".opus", ".mp3", ".m4a", ".wav", ".aac", ".flac", ".webm")
+    content_type = (fails.content_type or "").casefold()
+    if not (content_type.startswith("audio/") or filename.casefold().endswith(audio_extensions)):
+        await interaction.response.send_message("Pievieno audio failu (piemēram, OGG, MP3, M4A vai WAV).", ephemeral=True)
+        return
+    members = [int(uid) for uid in pair.get("members", [])]
+    partner_ids = [uid for uid in members if uid != int(interaction.user.id)]
+    if len(partner_ids) != 1:
+        await interaction.response.send_message("Neizdevās noteikt partneri. Pārbaudi pāra iestatījumus.", ephemeral=True)
+        return
+    sender_key = str(interaction.user.id)
+    task_key = task_progress_notice_key(pair)
+    sent_records = pair.setdefault("voice_messages", {})
+    existing = sent_records.get(sender_key)
+    if isinstance(existing, dict) and existing.get("task_key") == task_key:
+        await interaction.response.send_message("Tava balss ziņa šim uzdevumam jau ir nosūtīta partnerim.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        audio_bytes = await fails.read()
+        recipient = await bot.fetch_user(partner_ids[0])
+        view = VoiceListenedView(pair_id, interaction.user.id, partner_ids[0], task_key)
+        await recipient.send(
+            f"🎙️ **Balss ziņa no tava partnera**\n**Uzdevums:** {pair.get('task_text', '')}\n"
+            "Kad noklausies, nospied pogu zem šīs ziņas. Ieraksts ir nosūtīts tikai tev.",
+            file=discord.File(io.BytesIO(audio_bytes), filename=filename),
+            view=view,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except (discord.Forbidden, discord.HTTPException, OSError) as error:
+        print(f"Neizdevās nosūtīt balss ziņu partnerim: {error}")
+        await interaction.followup.send(
+            "Balss ziņu neizdevās nosūtīt. Partnerim jāatļauj servera dalībnieku privātās ziņas.",
+            ephemeral=True,
+        )
+        return
+
+    sent_records[sender_key] = {
+        "task_key": task_key,
+        "filename": filename,
+        "sent_at": datetime.now(LATVIA_TZ).isoformat(),
+        "recipient_id": str(partner_ids[0]),
+    }
+    confirmations = pair.setdefault("task_confirmations", [])
+    if sender_key not in {str(uid) for uid in confirmations}:
+        confirmations.append(sender_key)
+    try:
+        save_data()
+    except OSError as error:
+        print(f"Balss ziņa nosūtīta, bet tās statuss netika saglabāts: {error}")
+    await notify_pair_task_progress(pair, interaction.guild)
+    await interaction.followup.send(
+        "🔒 Balss ziņa nosūtīta tikai partnerim privātā DM. Uzdevums tiks pabeigts, kad partneris to noklausīsies un apstiprinās.",
+        ephemeral=True,
+    )
+
+
 @bot.tree.command(name="task_proof", description="Pievieno izvēles pierādījumu šodienas uzdevumam")
 @app_commands.describe(fails="Izvēles attēls, audio vai cits pierādījums")
 async def task_proof(interaction: discord.Interaction, fails: discord.Attachment):
@@ -2355,6 +2470,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/answer",
         value="Iesniedz atbildi privāti. Kad abi atbildējuši, partnera atbilde tiek nosūtīta Discord DM, nevis publicēta servera kanālā.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/balss_zina",
+        value="Nosūta aktīvā balss uzdevuma audio ierakstu tikai partnerim privātā DM; partneris apstiprina noklausīšanos.",
         inline=False,
     )
     embed.add_field(
