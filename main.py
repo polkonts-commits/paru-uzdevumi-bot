@@ -2264,6 +2264,68 @@ async def premium_grant(
 
 
 @bot.tree.command(
+    name="kompliments",
+    description="Nosūta izvēlētai personai publisku komplimentu",
+)
+@app_commands.describe(
+    lietotajs="Persona, kurai veltīt komplimentu",
+    kategorija="Izvēlies komplimenta noskaņu",
+)
+@app_commands.choices(
+    kategorija=[
+        app_commands.Choice(name="🎲 Nejaušs", value="Nejauši"),
+        app_commands.Choice(name="😂 Smieklīgi", value="Smieklīgi"),
+        app_commands.Choice(name="🤝 Draudzīgi", value="Draudzīgi"),
+        app_commands.Choice(name="😏 Nedaudz sarkastiski", value="Nedaudz sarkastiski"),
+        app_commands.Choice(name="💪 Motivējoši", value="Motivējoši"),
+        app_commands.Choice(name="❤️ Romantiski", value="Romantiski"),
+        app_commands.Choice(name="😉 Flirtējoši", value="Flirtējoši"),
+    ],
+)
+async def kompliments(
+    interaction: discord.Interaction,
+    lietotajs: discord.Member,
+    kategorija: app_commands.Choice[str],
+):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Šo komandu var izmantot tikai Discord serverī.",
+            ephemeral=True,
+        )
+        return
+
+    selected_category = kategorija.value
+    if selected_category == "Nejauši":
+        selected_category = random.choice(tuple(COMPLIMENTS_BY_CATEGORY))
+
+    compliment = random.choice(COMPLIMENTS_BY_CATEGORY[selected_category])
+    embed = discord.Embed(
+        title="💌 Tev ir kompliments!",
+        description=compliment,
+        color=discord.Color.from_rgb(232, 67, 147),
+    )
+    embed.set_footer(text=f"Kategorija: {selected_category}")
+
+    try:
+        await interaction.response.send_message(
+            content=f"✨ {lietotajs.mention}",
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(
+                users=[lietotajs],
+                roles=False,
+                everyone=False,
+            ),
+        )
+    except discord.HTTPException as error:
+        print(f"Neizdevās nosūtīt publisku komplimentu: {error}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "Komplimentu neizdevās nosūtīt. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+
+
+@bot.tree.command(
     name="task_mode",
     description="Izvēlies uzdevumus kopā, attālināti vai nejauši",
 )
@@ -2514,6 +2576,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/random_quest",
         value="Premium lietotāji var pieprasīt papildu nejaušu uzdevumu jebkurā laikā.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/kompliments",
+        value="Atzīmē servera dalībnieku un izvēlies komplimenta kategoriju. Kompliments tiek publicēts kopējā kanālā.",
         inline=False,
     )
     embed.add_field(
