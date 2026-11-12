@@ -2263,6 +2263,237 @@ async def premium_grant(
     )
 
 
+
+
+# Pāru spēles — pirmais posms: "Ko tu izvēlētos?"
+CHOICE_QUESTIONS = [
+    ("Nedēļu bez telefona 📵", "Nedēļu bez televizora 📺"),
+    ("Romantisks ceļojums 🌅", "Traks piedzīvojums 🏕️"),
+    ("Vakars mājās 🏡", "Spontāns izbrauciens 🚗"),
+    ("Vienmēr zināt patiesību 💬", "Vienmēr spēt lasīt domas 🧠"),
+    ("Dzīvot pie jūras 🌊", "Dzīvot kalnos 🏔️"),
+    ("Kopā gatavot vakariņas 🍝", "Kopā pasūtīt ēdienu 🍕"),
+    ("Saņemt pārsteigumu 🎁", "Pašam izvēlēties dāvanu 🛍️"),
+    ("Atgriezties pirmajā randiņā ❤️", "Ieraudzīt sevi pēc 20 gadiem 🔮"),
+    ("Dejot lietū 🌧️", "Skatīties zvaigznēs ✨"),
+    ("Vienu garu atvaļinājumu 🏖️", "Vairākas īsas brīvdienas 🧳"),
+    ("Vienmēr izvēlēties filmu 🎬", "Vienmēr izvēlēties mūziku 🎵"),
+    ("Lasīt partnera domas uz dienu 🤔", "Ļaut partnerim lasīt tavējās uz dienu 😅"),
+]
+
+def choice_game_embed(pair):
+    game = pair.setdefault("games", {}).setdefault("choice", {})
+    question = game.get("question")
+    if not question:
+        question = random.choice(CHOICE_QUESTIONS)
+        game["question"] = list(question)
+        game["choices"] = {}
+    choices = game.setdefault("choices", {})
+    members = [str(uid) for uid in pair.get("members", [])]
+    submitted = len([uid for uid in members if uid in choices])
+    embed = discord.Embed(
+        title="🤔 Ko tu izvēlētos?",
+        description=f"**A:** {question[0]}\n**B:** {question[1]}\n\n"
+                    f"Atbildiet abi, izvēloties vienu variantu. Atbildes atklāsies tikai pēc abu izvēles.\n"
+                    f"**Atbildējuši:** {submitted}/2",
+        color=discord.Color.from_rgb(93, 120, 220),
+    )
+    if len(members) == 2 and all(uid in choices for uid in members):
+        first, second = choices[members[0]], choices[members[1]]
+        matched = first == second
+        game["last_result"] = "match" if matched else "different"
+        embed.add_field(
+            name="🔓 Atbildes atklātas",
+            value=(
+                f"**{members[0]}:** {'A' if first == 'A' else 'B'}\n"
+                f"**{members[1]}:** {'A' if second == 'A' else 'B'}\n\n"
+                + ("❤️ Jūs izvēlējāties vienādi! Pāris saņem 1 punktu." if matched
+                   else "😄 Šoreiz izvēles atšķīrās — pārrunājiet, kāpēc!")
+            ),
+            inline=False,
+        )
+    rounds = int(game.get("rounds", 0))
+    matches = int(game.get("matches", 0))
+    embed.set_footer(text=f"Kopā izspēlētas kārtas: {rounds} • Vienādas izvēles: {matches}")
+    return embed
+
+
+class CoupleChoiceGameView(discord.ui.View):
+    """Abu partneru kopīga izvēle; rezultāts atklājas tikai pēc abām atbildēm."""
+
+    def __init__(self, pair_id):
+        super().__init__(timeout=3600)
+        self.pair_id = str(pair_id)
+
+    async def _get_pair(self, interaction):
+        pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+        if (
+            pair is None
+            or str(pair_id) != self.pair_id
+            or not user_is_in_guild_pair(interaction, pair)
+            or interaction.channel_id != int(pair.get("tasks_channel_id", 0))
+        ):
+            await interaction.response.send_message(
+                "Šo spēli var izmantot tikai sava pāra privātajā uzdevumu kanālā.",
+                ephemeral=True,
+            )
+            return None
+        return pair
+
+    async def _choose(self, interaction, option):
+        pair = await self._get_pair(interaction)
+        if pair is None:
+            return
+        game = pair.setdefault("games", {}).setdefault("choice", {})
+        choices = game.setdefault("choices", {})
+        user_key = str(interaction.user.id)
+        members = [str(uid) for uid in pair.get("members", [])]
+        if len(members) != 2 or user_key not in members:
+            await interaction.response.send_message("Neizdevās pārbaudīt pāra dalībniekus.", ephemeral=True)
+            return
+        if len(choices) == 2 and all(uid in choices for uid in members):
+            await interaction.response.send_message(
+                "Šī kārta jau ir noslēgusies. Nospiediet “Nākamais jautājums”.",
+                ephemeral=True,
+            )
+            return
+
+        choices[user_key] = option
+        completed = all(uid in choices for uid in members)
+        if completed and not game.get("round_counted"):
+            game["rounds"] = int(game.get("rounds", 0)) + 1
+            if choices[members[0]] == choices[members[1]]:
+                game["matches"] = int(game.get("matches", 0)) + 1
+            game["round_counted"] = True
+
+        try:
+            save_data()
+        except OSError as error:
+            choices.pop(user_key, None)
+            print(f"Neizdevās saglabāt pāra spēles atbildi: {error}")
+            await interaction.response.send_message(
+                "Atbildi neizdevās saglabāt. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+
+        if completed:
+            await interaction.response.edit_message(
+                embed=choice_game_embed(pair),
+                view=self,
+            )
+        else:
+            await interaction.response.send_message(
+                "Tava izvēle saglabāta privāti. Gaidām partnera atbildi. ❤️",
+                ephemeral=True,
+            )
+            try:
+                await interaction.message.edit(embed=choice_game_embed(pair), view=self)
+            except discord.HTTPException:
+                pass
+
+    @discord.ui.button(label="Izvēlos A", style=discord.ButtonStyle.primary, emoji="🅰️")
+    async def choose_a(self, interaction, button):
+        await self._choose(interaction, "A")
+
+    @discord.ui.button(label="Izvēlos B", style=discord.ButtonStyle.primary, emoji="🅱️")
+    async def choose_b(self, interaction, button):
+        await self._choose(interaction, "B")
+
+    @discord.ui.button(label="Nākamais jautājums", style=discord.ButtonStyle.success, emoji="➡️")
+    async def next_question(self, interaction, button):
+        pair = await self._get_pair(interaction)
+        if pair is None:
+            return
+        game = pair.setdefault("games", {}).setdefault("choice", {})
+        choices = game.setdefault("choices", {})
+        members = [str(uid) for uid in pair.get("members", [])]
+        if len(members) != 2 or not all(uid in choices for uid in members):
+            await interaction.response.send_message(
+                "Vispirms abiem partneriem jāizvēlas atbilde.",
+                ephemeral=True,
+            )
+            return
+        previous = tuple(game.get("question", []))
+        options = [item for item in CHOICE_QUESTIONS if tuple(item) != previous]
+        game["question"] = list(random.choice(options or CHOICE_QUESTIONS))
+        game["choices"] = {}
+        game["round_counted"] = False
+        game.pop("last_result", None)
+        try:
+            save_data()
+        except OSError as error:
+            print(f"Neizdevās saglabāt nākamo pāra spēles kārtu: {error}")
+            await interaction.response.send_message(
+                "Neizdevās sākt nākamo kārtu. Mēģini vēlreiz.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.edit_message(
+            embed=choice_game_embed(pair),
+            view=self,
+        )
+
+
+@bot.tree.command(
+    name="speles",
+    description="Atver pāra kopīgo spēļu centru",
+)
+async def speles(interaction: discord.Interaction):
+    pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
+    if not pair or not user_is_in_guild_pair(interaction, pair):
+        await interaction.response.send_message(
+            "Spēles pieejamas tikai aktīva pāra dalībniekiem sava pāra serverī.",
+            ephemeral=True,
+        )
+        return
+    channel = await fetch_guild_channel(
+        interaction.guild,
+        pair.get("tasks_channel_id"),
+    )
+    if channel is None or not hasattr(channel, "send"):
+        await interaction.response.send_message(
+            "Neizdevās atrast pāra privāto uzdevumu kanālu.",
+            ephemeral=True,
+        )
+        return
+
+    game = pair.setdefault("games", {}).setdefault("choice", {})
+    if not game.get("question"):
+        game["question"] = list(random.choice(CHOICE_QUESTIONS))
+        game["choices"] = {}
+        game["round_counted"] = False
+    try:
+        save_data()
+        await channel.send(
+            embed=discord.Embed(
+                title="🎮 Pāru spēļu centrs",
+                description=(
+                    "**🤔 Ko tu izvēlētos?**\n"
+                    "Abi izvēlieties vienu no diviem variantiem. Atbildes būs slepenas līdz brīdim, "
+                    "kad būs atbildējuši abi.\n\n"
+                    "**❤️ Cik labi tu mani pazīsti?** — nākamajā izstrādes posmā.\n"
+                    "**🔐 Kopīgā misija** — nākamajā izstrādes posmā.\n\n"
+                    "Spēles ir bezmaksas. Rezultāti tiek saglabāti jūsu pārim."
+                ),
+                color=discord.Color.from_rgb(190, 70, 120),
+            ),
+            view=CoupleChoiceGameView(pair_id),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except (OSError, discord.HTTPException) as error:
+        print(f"Neizdevās atvērt pāru spēļu centru: {error}")
+        await interaction.response.send_message(
+            "Spēļu centru neizdevās atvērt. Pārbaudi bota kanāla atļaujas un mēģini vēlreiz.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        "🎮 Spēļu centrs atvērts jūsu privātajā pāra kanālā.",
+        ephemeral=True,
+    )
+
+
 @bot.tree.command(
     name="kompliments",
     description="Nosūta izvēlētai personai publisku komplimentu",
@@ -2576,6 +2807,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/random_quest",
         value="Premium lietotāji var pieprasīt papildu nejaušu uzdevumu jebkurā laikā.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/speles",
+        value="Atver pāra spēļu centru. Pašlaik pieejama spēle “Ko tu izvēlētos?”; pārējās spēles tiks pievienotas nākamajos posmos.",
         inline=False,
     )
     embed.add_field(
