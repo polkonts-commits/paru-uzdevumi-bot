@@ -538,8 +538,7 @@ def user_is_in_guild_pair(interaction, pair):
 # Tiešiem bota pieminējumiem Discord nodrošina nepieciešamo ziņas informāciju
 # arī bez Message Content Intent; neprasām plašāku piekļuvi visam čata saturam.
 intents = discord.Intents.default()
-# Balss ziņu pielikumu saņemšanai Discord prasa Message Content Intent.
-intents.message_content = True
+# Balss ziņas saņemam bota DM; privātajām sarunām Message Content Intent nav jāieslēdz.
 
 COMPLIMENTS_BY_CATEGORY = {
     "Smieklīgi": [
