@@ -646,22 +646,41 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # Native Discord Voice Message tiek atpazīta pēc IS_VOICE_MESSAGE karoga.
-    # Apstrādājam tikai viena pāra privātajā uzdevumu kanālā.
-    if message.guild is not None and message.attachments:
+    # Native Discord Voice Message saņemam bota DM, lai ieraksts netiktu publicēts pāra kanālā.
+    if message.guild is None and message.attachments:
         message_flags = int(getattr(message.flags, "value", 0) or 0)
         is_native_voice = bool(message_flags & (1 << 13))
         if is_native_voice and len(message.attachments) == 1:
-            pair_id, pair = get_pair_for_user(message.author.id, message.guild.id)
-            if (
-                pair
-                and int(pair.get("guild_id", 0)) == int(message.guild.id)
-                and int(pair.get("tasks_channel_id", 0)) == int(message.channel.id)
-                and task_is_active(pair)
-                and (pair.get("task_type") or infer_task_type(pair.get("task_text", ""))) == "voice"
-            ):
+            candidates = []
+            for candidate_pair_id, candidate_pair in data.get("pairs", {}).items():
+                candidate_members = {
+                    int(uid) for uid in candidate_pair.get("members", [])
+                }
+                if (
+                    int(message.author.id) in candidate_members
+                    and task_is_active(candidate_pair)
+                    and (candidate_pair.get("task_type") or infer_task_type(
+                        candidate_pair.get("task_text", "")
+                    )) == "voice"
+                ):
+                    candidates.append((candidate_pair_id, candidate_pair))
+
+            if len(candidates) != 1:
+                response_text = (
+                    "Atradu vairākus aktīvus balss uzdevumus dažādos serveros. "
+                    "Lai ziņu varētu droši nogādāt pareizajam partnerim, vispirms "
+                    "atstāj aktīvu balss uzdevumu tikai vienā pārī."
+                    if len(candidates) > 1
+                    else "Šobrīd tev nav aktīva balss ziņas uzdevuma. "
+                    "Balss ziņu sūti šeit, bota privātajā sarunā, kad šāds uzdevums ir aktīvs."
+                )
+                try:
+                    await message.author.send(response_text)
+                except discord.HTTPException:
+                    pass
+            else:
+                pair_id, pair = candidates[0]
                 attachment = message.attachments[0]
-                # Discord voice ziņai jābūt ar audio pielikumu un balss ziņas metadatiem.
                 attachment_is_voice = (
                     attachment.is_voice_message()
                     if callable(getattr(attachment, "is_voice_message", None))
@@ -708,7 +727,9 @@ async def on_message(message: discord.Message):
                                 save_data()
                             except OSError as error:
                                 print(f"Balss ziņa nosūtīta, bet tās statuss netika saglabāts: {error}")
-                            await notify_pair_task_progress(pair, message.guild)
+                            guild = bot.get_guild(int(pair.get("guild_id", 0)))
+                            if guild is not None:
+                                await notify_pair_task_progress(pair, guild)
                             try:
                                 await message.author.send(
                                     "🔒 Tava Discord balss ziņa ir nosūtīta partnerim privātā DM."
@@ -720,10 +741,24 @@ async def on_message(message: discord.Message):
                             try:
                                 await message.author.send(
                                     "Balss ziņu neizdevās nosūtīt partnerim. "
-                                    "Pārbaudiet, vai partnerim ir atļautas privātās ziņas no servera dalībniekiem."
+                                    "Pārbaudiet, vai partnerim ir atļautas privātās ziņas."
                                 )
                             except discord.HTTPException:
                                 pass
+                    elif len(partner_ids) != 1:
+                        try:
+                            await message.author.send(
+                                "Neizdevās noteikt vienu partneri. Pārbaudiet pāra iestatījumus."
+                            )
+                        except discord.HTTPException:
+                            pass
+                    else:
+                        try:
+                            await message.author.send(
+                                "Tava balss ziņa šim uzdevumam jau ir nosūtīta partnerim."
+                            )
+                        except discord.HTTPException:
+                            pass
 
     # Esošā komplimentu funkcija paliek nemainīta.
     if message.guild is not None and bot.user is not None and bot.user in message.mentions:
@@ -1483,8 +1518,12 @@ def build_daily_task_embed(pair: dict) -> discord.Embed:
             f"{pair.get('task_text', '')}\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "✨ **Kā piedalīties**\n"
-            "Katram partnerim pietiek **vai nu iesniegt atbildi, vai nospiest "
-            "„Atzīmēt izpildītu”**. Foto pievienošana ir brīvprātīga."
+            + (
+                "Ieraksti Discord balss ziņu bota privātajā DM. Bots to pārsūtīs tikai partnerim.\n"
+                if (pair.get("task_type") or infer_task_type(pair.get("task_text", ""))) == "voice"
+                else "Katram partnerim pietiek **vai nu iesniegt atbildi, vai nospiest "
+                     "„Atzīmēt izpildītu”**. Foto pievienošana ir brīvprātīga."
+            )
         ),
         color=discord.Color.from_rgb(232, 67, 147),
     )
@@ -2486,6 +2525,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/answer",
         value="Iesniedz atbildi privāti. Kad abi atbildējuši, partnera atbilde tiek nosūtīta Discord DM, nevis publicēta servera kanālā.",
+        inline=False,
+    )
+    embed.add_field(
+        name="🎙️ Balss ziņas uzdevumi",
+        value="Ieraksti un nosūti Discord balss ziņu bota privātajā DM. Bots to automātiski pārsūtīs tikai partnerim; partneris apstiprina noklausīšanos.",
         inline=False,
     )
     embed.add_field(
