@@ -629,6 +629,10 @@ class CoupleBot(commands.Bot):
         self.add_view(AnswerView())
         self.add_view(CreatePairView())
         self.add_view(PairManagementView())
+        # Re-register every couple's persistent game controls after a bot restart.
+        for pair_id, pair in data.get("pairs", {}).items():
+            if pair.get("games", {}).get("choice"):
+                self.add_view(CoupleChoiceGameView(pair_id))
         try:
             synced = await self.tree.sync()
             print(f"Sinhronizētas {len(synced)} Discord komandas")
@@ -2319,11 +2323,19 @@ def choice_game_embed(pair):
 
 
 class CoupleChoiceGameView(discord.ui.View):
-    """Abu partneru kopīga izvēle; rezultāts atklājas tikai pēc abām atbildēm."""
+    """Persistent game buttons; remain usable after restarts."""
 
     def __init__(self, pair_id):
-        super().__init__(timeout=3600)
+        super().__init__(timeout=None)
         self.pair_id = str(pair_id)
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.label == "Izvēlos A":
+                    child.custom_id = f"couple_choice:{self.pair_id}:a"
+                elif child.label == "Izvēlos B":
+                    child.custom_id = f"couple_choice:{self.pair_id}:b"
+                elif child.label == "Nākamais jautājums":
+                    child.custom_id = f"couple_choice:{self.pair_id}:next"
 
     async def _get_pair(self, interaction):
         pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
@@ -2333,7 +2345,7 @@ class CoupleChoiceGameView(discord.ui.View):
             or not user_is_in_guild_pair(interaction, pair)
             or interaction.channel_id != int(pair.get("tasks_channel_id", 0))
         ):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Šo spēli var izmantot tikai sava pāra privātajā uzdevumu kanālā.",
                 ephemeral=True,
             )
@@ -2341,6 +2353,8 @@ class CoupleChoiceGameView(discord.ui.View):
         return pair
 
     async def _choose(self, interaction, option):
+        # Acknowledge the component interaction immediately; Discord otherwise expires it in ~3 seconds.
+        await interaction.response.defer(thinking=False)
         pair = await self._get_pair(interaction)
         if pair is None:
             return
@@ -2349,10 +2363,12 @@ class CoupleChoiceGameView(discord.ui.View):
         user_key = str(interaction.user.id)
         members = [str(uid) for uid in pair.get("members", [])]
         if len(members) != 2 or user_key not in members:
-            await interaction.response.send_message("Neizdevās pārbaudīt pāra dalībniekus.", ephemeral=True)
+            await interaction.followup.send(
+                "Neizdevās pārbaudīt pāra dalībniekus.", ephemeral=True
+            )
             return
         if len(choices) == 2 and all(uid in choices for uid in members):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Šī kārta jau ir noslēgusies. Nospiediet “Nākamais jautājums”.",
                 ephemeral=True,
             )
@@ -2371,26 +2387,21 @@ class CoupleChoiceGameView(discord.ui.View):
         except OSError as error:
             choices.pop(user_key, None)
             print(f"Neizdevās saglabāt pāra spēles atbildi: {error}")
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Atbildi neizdevās saglabāt. Mēģini vēlreiz.",
                 ephemeral=True,
             )
             return
 
-        if completed:
-            await interaction.response.edit_message(
-                embed=choice_game_embed(pair),
-                view=self,
-            )
-        else:
-            await interaction.response.send_message(
+        await interaction.edit_original_response(
+            embed=choice_game_embed(pair),
+            view=self,
+        )
+        if not completed:
+            await interaction.followup.send(
                 "Tava izvēle saglabāta privāti. Gaidām partnera atbildi. ❤️",
                 ephemeral=True,
             )
-            try:
-                await interaction.message.edit(embed=choice_game_embed(pair), view=self)
-            except discord.HTTPException:
-                pass
 
     @discord.ui.button(label="Izvēlos A", style=discord.ButtonStyle.primary, emoji="🅰️")
     async def choose_a(self, interaction, button):
@@ -2402,6 +2413,7 @@ class CoupleChoiceGameView(discord.ui.View):
 
     @discord.ui.button(label="Nākamais jautājums", style=discord.ButtonStyle.success, emoji="➡️")
     async def next_question(self, interaction, button):
+        await interaction.response.defer(thinking=False)
         pair = await self._get_pair(interaction)
         if pair is None:
             return
@@ -2409,7 +2421,7 @@ class CoupleChoiceGameView(discord.ui.View):
         choices = game.setdefault("choices", {})
         members = [str(uid) for uid in pair.get("members", [])]
         if len(members) != 2 or not all(uid in choices for uid in members):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Vispirms abiem partneriem jāizvēlas atbilde.",
                 ephemeral=True,
             )
@@ -2424,12 +2436,12 @@ class CoupleChoiceGameView(discord.ui.View):
             save_data()
         except OSError as error:
             print(f"Neizdevās saglabāt nākamo pāra spēles kārtu: {error}")
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Neizdevās sākt nākamo kārtu. Mēģini vēlreiz.",
                 ephemeral=True,
             )
             return
-        await interaction.response.edit_message(
+        await interaction.edit_original_response(
             embed=choice_game_embed(pair),
             view=self,
         )
@@ -2440,9 +2452,11 @@ class CoupleChoiceGameView(discord.ui.View):
     description="Atver pāra kopīgo spēļu centru",
 )
 async def speles(interaction: discord.Interaction):
+    # Defer the slash command before channel fetch / file I/O to meet Discord's 3-second deadline.
+    await interaction.response.defer(ephemeral=True, thinking=True)
     pair_id, pair = get_pair_for_user(interaction.user.id, interaction.guild_id)
     if not pair or not user_is_in_guild_pair(interaction, pair):
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Spēles pieejamas tikai aktīva pāra dalībniekiem sava pāra serverī.",
             ephemeral=True,
         )
@@ -2452,7 +2466,7 @@ async def speles(interaction: discord.Interaction):
         pair.get("tasks_channel_id"),
     )
     if channel is None or not hasattr(channel, "send"):
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Neizdevās atrast pāra privāto uzdevumu kanālu.",
             ephemeral=True,
         )
@@ -2483,12 +2497,12 @@ async def speles(interaction: discord.Interaction):
         )
     except (OSError, discord.HTTPException) as error:
         print(f"Neizdevās atvērt pāru spēļu centru: {error}")
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Spēļu centru neizdevās atvērt. Pārbaudi bota kanāla atļaujas un mēģini vēlreiz.",
             ephemeral=True,
         )
         return
-    await interaction.response.send_message(
+    await interaction.followup.send(
         "🎮 Spēļu centrs atvērts jūsu privātajā pāra kanālā.",
         ephemeral=True,
     )
