@@ -2480,18 +2480,7 @@ async def speles(interaction: discord.Interaction):
     try:
         save_data()
         await channel.send(
-            embed=discord.Embed(
-                title="🎮 Pāru spēļu centrs",
-                description=(
-                    "**🤔 Ko tu izvēlētos?**\n"
-                    "Abi izvēlieties vienu no diviem variantiem. Atbildes būs slepenas līdz brīdim, "
-                    "kad būs atbildējuši abi.\n\n"
-                    "**❤️ Cik labi tu mani pazīsti?** — nākamajā izstrādes posmā.\n"
-                    "**🔐 Kopīgā misija** — nākamajā izstrādes posmā.\n\n"
-                    "Spēles ir bezmaksas. Rezultāti tiek saglabāti jūsu pārim."
-                ),
-                color=discord.Color.from_rgb(190, 70, 120),
-            ),
+            embed=choice_game_embed(pair),
             view=CoupleChoiceGameView(pair_id),
             allowed_mentions=discord.AllowedMentions.none(),
         )
