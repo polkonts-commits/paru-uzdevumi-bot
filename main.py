@@ -2309,8 +2309,8 @@ def choice_game_embed(pair):
         embed.add_field(
             name="🔓 Atbildes atklātas",
             value=(
-                f"**{members[0]}:** {'A' if first == 'A' else 'B'}\n"
-                f"**{members[1]}:** {'A' if second == 'A' else 'B'}\n\n"
+                f"**<@{members[0]}>:** {'A' if first == 'A' else 'B'}\n"
+                f"**<@{members[1]}>:** {'A' if second == 'A' else 'B'}\n\n"
                 + ("❤️ Jūs izvēlējāties vienādi! Pāris saņem 1 punktu." if matched
                    else "😄 Šoreiz izvēles atšķīrās — pārrunājiet, kāpēc!")
             ),
