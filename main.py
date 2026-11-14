@@ -1168,6 +1168,24 @@ class UnpairConfirmation(discord.ui.View):
             category = await fetch_guild_channel(guild, pair.get("category_id"))
             if category is not None:
                 await category.delete(reason="Pāris noņemts ar /unpair")
+            # Noņem tikai aktīvā pāra statusa lomu; nopelnītās sasniegumu
+            # lomas paliek kā pastāvīgi apbalvojumi.
+            base_role = discord.utils.get(guild.roles, name="💞 Pāris")
+            if base_role is not None:
+                for member_id in pair.get("members", []):
+                    member = guild.get_member(int(member_id))
+                    if member is None:
+                        try:
+                            member = await guild.fetch_member(int(member_id))
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                            member = None
+                    if member is not None and base_role in member.roles:
+                        try:
+                            await member.remove_roles(
+                                base_role, reason="Pāris atvienots ar /unpair"
+                            )
+                        except discord.HTTPException as error:
+                            print(f"Neizdevās noņemt pāra statusa lomu {member_id}: {error}")
             role_id = pair.get("role_id")
             role = guild.get_role(int(role_id)) if role_id else None
             if role is not None:
