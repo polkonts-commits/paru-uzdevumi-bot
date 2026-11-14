@@ -1,4 +1,5 @@
 
+import asyncio
 import io
 import json
 import os
@@ -2740,6 +2741,87 @@ async def speles(interaction: discord.Interaction):
     )
 
 
+AURA_SCAN_STEPS = [
+    "🔎 Skenēju apkārtējās vides enerģiju...",
+    "⚡ Uztveru harizmas un haosa svārstības...",
+    "🌌 Salīdzinu auras frekvenci ar Visuma datubāzi...",
+    "🧪 Pārbaudu, vai tuvumā nav konstatēts leģendārs līmenis...",
+]
+
+AURA_TITLES = [
+    ("😈", "Haosa magnēts", "Tavs haoss ir tik stabils, ka to varētu izmantot kā enerģijas avotu."),
+    ("🧊", "Ledus nervi", "Pat termometrs tavā klātbūtnē sāk šaubīties par sevi."),
+    ("🧠", "Ģēnijs ar traucējumiem", "Idejas ir. Loģika reizēm paņem brīvdienu."),
+    ("🦇", "Nakts valdnieks", "Tava enerģija aktivizējas tieši tad, kad citi jau guļ."),
+    ("🌀", "Dzīvais haoss", "Neviens nezina, kas notiks tālāk. Ieskaitot tevi."),
+    ("👑", "Galvenais boss", "Pat nejaušība pirms tevis divreiz pārbauda savus gājienus."),
+    ("🐸", "Leģendārais dīvainis", "Reta kombinācija. Zinātne pagaidām atsakās komentēt."),
+    ("💀", "Staigājošā katastrofa", "Brīdinājuma sistēma nostrādāja, bet jau bija par vēlu."),
+    ("✨", "Harizmas magnāts", "Tava klātbūtne palielina telpas spilgtumu par aizdomīgiem 17%."),
+    ("🛡️", "Miera nesatricināmais", "Pat drāma tavā tuvumā sāk runāt klusāk."),
+    ("🚀", "Neapturamais", "Plāns var nebūt skaidrs, bet kustība ir iespaidīga."),
+    ("🎭", "Noslēpumainā personība", "Pat tava aura nezina, ko tu izdarīsi nākamajā sekundē."),
+    ("🐉", "Pūķa režīms", "Iekšējā jauda pārsniedz drošības instrukcijā norādīto."),
+    ("🧲", "Uzmanības gravitācija", "Notikumi kaut kā vienmēr atrod ceļu pie tevis."),
+    ("🧨", "Kontrolētais sprādziens", "Viss it kā mierīgi. Līdz brīdim, kad vairs nav."),
+    ("🦄", "Vienradža frekvence", "Tik reta aura, ka skeneris uz brīdi apjuka."),
+]
+
+RARE_AURA_TITLES = [
+    ("🌠", "Kosmiskais izņēmums", "Šādu auru skeneris redz tikai īpašos gadījumos."),
+    ("👁️", "Visuma favorīts", "Sistēma pieprasa atkārtotu pārbaudi. Rezultāts joprojām tas pats."),
+    ("🔥", "Mītiskais haosa pavēlnieks", "Pat nejaušības ģenerators uz mirkli apklusa."),
+]
+
+
+@bot.tree.command(
+    name="es",
+    description="Noskenē tavu auru un piešķir nejaušu titulu",
+)
+async def es(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
+    score = random.randint(-250, 1500)
+    if random.random() < 0.01:
+        icon, title, verdict = random.choice(RARE_AURA_TITLES)
+        rarity = "🌟 MĪTISKS ATRADUMS — 1% iespēja"
+    else:
+        icon, title, verdict = random.choice(AURA_TITLES)
+        rarity = random.choice([
+            "Parasts", "Neparasts", "Rets", "Ļoti rets"
+        ])
+
+    embed = discord.Embed(
+        title="🔮 Auras skeneris",
+        description=f"**Mērķis:** {interaction.user.mention}\n\n{AURA_SCAN_STEPS[0]}",
+        color=discord.Color.from_rgb(151, 92, 220),
+    )
+    embed.set_footer(text="Auras laboratorija • Rezultāti ir nejauši un izklaidei")
+    await interaction.edit_original_response(embed=embed)
+
+    for step in AURA_SCAN_STEPS[1:]:
+        await asyncio.sleep(1.15)
+        embed.description = (
+            f"**Mērķis:** {interaction.user.mention}\n\n"
+            + "\n".join(AURA_SCAN_STEPS[:AURA_SCAN_STEPS.index(step) + 1])
+        )
+        await interaction.edit_original_response(embed=embed)
+
+    await asyncio.sleep(1.0)
+    embed.title = "🔮 Auras skenēšana pabeigta"
+    embed.description = (
+        f"**Mērķis:** {interaction.user.mention}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ **Auras punkti:** {score:+,}\n"
+        f"🎖️ **Retums:** {rarity}\n\n"
+        f"# {icon} {title}\n"
+        f"*{verdict}*"
+    )
+    embed.color = discord.Color.from_rgb(245, 166, 35) if rarity.startswith("🌟") else discord.Color.from_rgb(151, 92, 220)
+    embed.set_footer(text="Auras laboratorija • Izmēģini vēlreiz — rezultāts katru reizi mainās")
+    await interaction.edit_original_response(embed=embed)
+
+
 @bot.tree.command(
     name="kompliments",
     description="Nosūta izvēlētai personai publisku komplimentu",
@@ -3061,6 +3143,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/speles",
         value="Atver pāra spēļu centru. Pašlaik pieejama spēle “Ko tu izvēlētos?”; pārējās spēles tiks pievienotas nākamajos posmos.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/es",
+        value="Noskenē tavu auru, izrāda skenēšanas procesu un piešķir nejaušus auras punktus un titulu.",
         inline=False,
     )
     embed.add_field(
