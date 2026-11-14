@@ -2214,7 +2214,7 @@ async def task(interaction: discord.Interaction):
         )
         return
 
-    # /task nedrīkst izsniegt jaunu uzdevumu pirms 24 h termiņa.
+    # /task nedrīkst izsniegt jaunu uzdevumu pirms nākamās fiksētās plkst. 09.00 robežas.
     if pair.get("task_sent_at") or pair.get("task_sent_date"):
         await interaction.response.send_message(
             f"Pašreizējais uzdevums vēl ir spēkā.\n\n"
@@ -2247,7 +2247,7 @@ async def task(interaction: discord.Interaction):
     except OSError as error:
         print(f"Uzdevums nosūtīts, bet piegādes statuss netika saglabāts: {error}")
     await interaction.response.send_message(
-        "Uzdevums publicēts privātajā kanālā. Termiņš ir 24 stundas.", ephemeral=True
+        "Uzdevums publicēts pāra privātajā kanālā. Atbildes pieņem līdz nākamajai plkst. 09.00 pēc Latvijas laika.", ephemeral=True
     )
 
 
@@ -3173,6 +3173,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/task_proof",
         value="Saglabā izvēles pierādījumu privāti. Abi partneri to saņem DM pēc abu izpildes apstiprinājuma vai termiņa beigās plkst. 09.00.",
+        inline=False,
+    )
+    embed.add_field(
+        name="/izvilkt_atbildes",
+        value="Atkārtoti mēģina privāti nosūtīt abu partneru atbildes, ja iepriekšējā DM piegāde neizdevās.",
         inline=False,
     )
     embed.add_field(
