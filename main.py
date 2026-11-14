@@ -479,6 +479,75 @@ def apply_streak_premium_rewards(pair, now=None):
     }
     return 5 * missing
 
+# Pastāvīgās Discord lomas par pāra sasniegtajiem streak sliekšņiem.
+STREAK_ACHIEVEMENT_ROLES = [
+    (10, "✨ Dzirkstele", discord.Colour.from_rgb(255, 182, 193)),
+    (20, "💗 Sirds ritmā", discord.Colour.from_rgb(232, 90, 160)),
+    (30, "🔗 Nešķiramie", discord.Colour.from_rgb(170, 100, 220)),
+    (50, "👑 Zelta pāris", discord.Colour.from_rgb(230, 180, 55)),
+    (75, "💎 Dimanta saikne", discord.Colour.from_rgb(90, 190, 220)),
+    (100, "🏆 Leģendārais pāris", discord.Colour.from_rgb(245, 120, 55)),
+    (200, "🔥 Mūžīgā dzirksts", discord.Colour.from_rgb(220, 65, 65)),
+    (365, "🌌 Gada leģenda", discord.Colour.from_rgb(105, 95, 190)),
+]
+
+
+async def sync_pair_streak_roles(pair, guild):
+    """Piešķir abiem partneriem bāzes un visas nopelnītās sasniegumu lomas."""
+    if not isinstance(pair, dict) or guild is None:
+        return
+    member_ids = pair.get("members", [])
+    if len(member_ids) != 2:
+        return
+
+    role_specs = [(0, "💞 Pāris", discord.Colour.from_rgb(190, 70, 120))]
+    streak = max(0, int(pair.get("streak", 0)))
+    role_specs.extend(
+        spec for spec in STREAK_ACHIEVEMENT_ROLES if streak >= spec[0]
+    )
+
+    bot_member = guild.me
+    if bot_member is None or not bot_member.guild_permissions.manage_roles:
+        print(f"Nevar piešķirt pāra sasniegumu lomas serverī {guild.id}: trūkst Manage Roles.")
+        return
+
+    assigned_roles = []
+    for _, role_name, colour in role_specs:
+        role = discord.utils.get(guild.roles, name=role_name)
+        if role is None:
+            try:
+                role = await guild.create_role(
+                    name=role_name,
+                    colour=colour,
+                    mentionable=False,
+                    reason="Pāru streak sasniegumu loma",
+                )
+            except discord.HTTPException as error:
+                print(f"Neizdevās izveidot lomu {role_name}: {error}")
+                return
+        if role >= bot_member.top_role:
+            print(f"Nevar piešķirt lomu {role_name}: bota augstākajai lomai jābūt virs tās.")
+            return
+        assigned_roles.append(role)
+
+    for member_id in member_ids:
+        member = guild.get_member(int(member_id))
+        if member is None:
+            try:
+                member = await guild.fetch_member(int(member_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as error:
+                print(f"Neizdevās atrast pāra dalībnieku {member_id}: {error}")
+                continue
+        missing_roles = [role for role in assigned_roles if role not in member.roles]
+        if missing_roles:
+            try:
+                await member.add_roles(
+                    *missing_roles,
+                    reason="Piešķirtas pāra streak sasniegumu lomas",
+                )
+            except discord.HTTPException as error:
+                print(f"Neizdevās piešķirt sasniegumu lomas lietotājam {member_id}: {error}")
+
 
 # Vienreizēja, idempotenta migrācija esošajiem pāriem: par pašreizējo streak
 # tiek piešķirtas visas vēl neuzskaitītās 10 dienu sliekšņu balvas.
@@ -1003,6 +1072,7 @@ class PairInvite(discord.ui.View):
                 "history": [],
             }
             save_data()
+            await sync_pair_streak_roles(data["pairs"][pair_id], interaction.guild)
             await tasks_channel.send(
                 f"Sveicināti, {self.inviter.mention} un {self.invitee.mention}! ❤️\n"
                 "Jūsu privātā pāra telpa ir gatava.\n\n"
@@ -1525,6 +1595,7 @@ async def confirm_task_completion(interaction: discord.Interaction):
 
     await notify_pair_task_progress(pair, interaction.guild)
     if mark_task_completed(pair, today):
+        await sync_pair_streak_roles(pair, interaction.guild)
         sent_proofs, failed_proofs = await deliver_task_proofs_dm(
             pair, "abi partneri pabeidza uzdevumu ar atbildi vai apstiprinājumu"
         )
@@ -1733,6 +1804,8 @@ async def submit_answer(interaction: discord.Interaction, answer_text: str):
     members = [str(member_id) for member_id in pair.get("members", [])]
     submitted_count = sum(1 for member_id in members if member_id in answers)
     completed_now = mark_task_completed(pair, today)
+    if completed_now:
+        await sync_pair_streak_roles(pair, interaction.guild)
     await notify_pair_task_progress(pair, interaction.guild)
     if submitted_count < 2:
         try:
@@ -1987,6 +2060,12 @@ async def sync_existing_task_progress_notifications():
 async def on_ready():
     if not daily_task_scheduler.is_running():
         daily_task_scheduler.start()
+    # Idempotenta lomu sinhronizācija: piešķir bāzes lomu un atjauno
+    # visas pašreizējā streak nopelnītās lomas arī jau esošajiem pāriem.
+    for existing_pair in list(data.get("pairs", {}).values()):
+        guild = bot.get_guild(int(existing_pair.get("guild_id", 0)))
+        if guild is not None:
+            await sync_pair_streak_roles(existing_pair, guild)
     await sync_existing_task_progress_notifications()
     print(f"Bot: {bot.user} ir tiešsaistē")
 
@@ -2772,6 +2851,9 @@ class VoiceListenedView(discord.ui.View):
         if sender_key not in {str(uid) for uid in confirmations}:
             confirmations.append(sender_key)
         completed_now = mark_task_completed(pair, today_string())
+        guild = bot.get_guild(int(pair.get("guild_id", 0)))
+        if completed_now and guild is not None:
+            await sync_pair_streak_roles(pair, guild)
         try:
             save_data()
         except OSError as error:
