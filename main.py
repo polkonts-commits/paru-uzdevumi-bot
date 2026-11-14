@@ -549,17 +549,6 @@ async def sync_pair_streak_roles(pair, guild):
                 print(f"Neizdevās piešķirt sasniegumu lomas lietotājam {member_id}: {error}")
 
 
-# Vienreizēja, idempotenta migrācija esošajiem pāriem: par pašreizējo streak
-# tiek piešķirtas visas vēl neuzskaitītās 10 dienu sliekšņu balvas.
-_streak_rewards_migrated = False
-for _existing_pair in data.get("pairs", {}).values():
-    if isinstance(_existing_pair, dict):
-        if apply_streak_premium_rewards(_existing_pair):
-            _streak_rewards_migrated = True
-if _streak_rewards_migrated:
-    save_data()
-
-
 async def interaction_has_premium(interaction, pair=None):
     # Bota lietotnes īpašniekam vienmēr ir Unlimited — nav jāveic maksājums.
     if await bot.is_owner(interaction.user):
@@ -610,6 +599,17 @@ def save_data():
     finally:
         if temp_path and temp_path.exists():
             temp_path.unlink(missing_ok=True)
+
+
+# Vienreizēja, idempotenta migrācija esošajiem pāriem: par pašreizējo streak
+# tiek piešķirtas visas vēl neuzskaitītās 10 dienu sliekšņu balvas.
+_streak_rewards_migrated = False
+for _existing_pair in data.get("pairs", {}).values():
+    if isinstance(_existing_pair, dict):
+        if apply_streak_premium_rewards(_existing_pair):
+            _streak_rewards_migrated = True
+if _streak_rewards_migrated:
+    save_data()
 
 
 def today_string():
