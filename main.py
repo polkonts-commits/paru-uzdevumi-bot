@@ -448,11 +448,57 @@ def user_has_paid_premium(user_id):
     return premium_record_is_active(record)
 
 
+def pair_streak_premium_is_active(pair, now=None):
+    if not isinstance(pair, dict):
+        return False
+    expires_at = parse_task_timestamp(pair.get("streak_premium_until"))
+    now = now or datetime.now(LATVIA_TZ)
+    return expires_at is not None and expires_at > now
+
+
+def apply_streak_premium_rewards(pair, now=None):
+    """Piešķir pārim 5 Premium dienas par katru jaunu 10 dienu streak slieksni."""
+    if not isinstance(pair, dict):
+        return 0
+    now = now or datetime.now(LATVIA_TZ)
+    achieved_milestones = max(0, int(pair.get("streak", 0))) // 10
+    awarded_milestones = max(0, int(pair.get("streak_premium_milestones", 0)))
+    missing = max(0, achieved_milestones - awarded_milestones)
+    if not missing:
+        return 0
+    previous_expiry = parse_task_timestamp(pair.get("streak_premium_until"))
+    base = previous_expiry if previous_expiry and previous_expiry > now else now
+    expiry = base + timedelta(days=5 * missing)
+    pair["streak_premium_until"] = expiry.isoformat()
+    pair["streak_premium_milestones"] = achieved_milestones
+    pair["streak_premium_last_award"] = {
+        "date": now.date().isoformat(),
+        "milestones": missing,
+        "days": 5 * missing,
+        "expires_at": expiry.isoformat(),
+    }
+    return 5 * missing
+
+
+# Vienreizēja, idempotenta migrācija esošajiem pāriem: par pašreizējo streak
+# tiek piešķirtas visas vēl neuzskaitītās 10 dienu sliekšņu balvas.
+_streak_rewards_migrated = False
+for _existing_pair in data.get("pairs", {}).values():
+    if isinstance(_existing_pair, dict):
+        if apply_streak_premium_rewards(_existing_pair):
+            _streak_rewards_migrated = True
+if _streak_rewards_migrated:
+    save_data()
+
+
 async def interaction_has_premium(interaction, pair=None):
     # Bota lietotnes īpašniekam vienmēr ir Unlimited — nav jāveic maksājums.
     if await bot.is_owner(interaction.user):
         return True
     if user_has_paid_premium(interaction.user.id):
+        return True
+    # Streak balva ir kopīga abiem pašreizējā pāra dalībniekiem.
+    if pair_streak_premium_is_active(pair):
         return True
     # Pircēja pašreizējais partneris iegūst Premium piekļuvi tikai šajā pārī.
     if pair:
@@ -1365,26 +1411,29 @@ async def notify_pair_task_progress(pair: dict, guild, catch_up: bool = False):
 
 
 def mark_task_completed(pair: dict, today: str) -> bool:
-    """Vienreiz atjauno streak un izpildīto uzdevumu skaitu, kad abi partneri ir pabeiguši."""
+    """Atjauno streak un piešķir pāra Premium balvu par 10 dienu sliekšņiem."""
     if pair.get("task_completed") or not pair_task_done(pair):
         return False
     pair["task_completed"] = True
     pair["completed_tasks"] = int(pair.get("completed_tasks", 0)) + 1
     last_date = pair.get("last_completed_date", "")
     if last_date != today:
+        continued_streak = False
         if last_date:
             try:
                 previous_day = datetime.fromisoformat(last_date).date()
                 current_day = datetime.fromisoformat(today).date()
-                pair["streak"] = (
-                    int(pair.get("streak", 0)) + 1
-                    if (current_day - previous_day).days == 1 else 1
-                )
+                continued_streak = (current_day - previous_day).days == 1
             except ValueError:
-                pair["streak"] = 1
+                continued_streak = False
+        if continued_streak:
+            pair["streak"] = int(pair.get("streak", 0)) + 1
         else:
+            # Pārtrūkstot sērijai, sākas jauns balvu cikls.
             pair["streak"] = 1
+            pair["streak_premium_milestones"] = 0
         pair["last_completed_date"] = today
+        apply_streak_premium_rewards(pair)
     return True
 
 
@@ -2128,12 +2177,20 @@ async def premium(interaction: discord.Interaction):
         embed.add_field(name="💎 Tavs statuss", value="Premium piekļuve ir aktīva.", inline=False)
     else:
         embed.add_field(name="Tavs statuss", value=premium_status_text(interaction.user.id), inline=False)
+    if pair:
+        pair_expiry = parse_task_timestamp(pair.get("streak_premium_until"))
+        if pair_expiry and pair_expiry > datetime.now(LATVIA_TZ):
+            embed.add_field(
+                name="🔥 Pāra streak balva",
+                value=f"Abi partneri saņem Premium līdz <t:{int(pair_expiry.timestamp())}:F>.",
+                inline=False,
+            )
     embed.add_field(
         name="🎁 Dāvināšana",
         value="Premium dāvanas būs pieejamas pēc maksājumu sistēmas pieslēgšanas.",
         inline=False,
     )
-    embed.set_footer(text="Abonements būs piesaistīts pircēja Discord kontam.")
+    embed.set_footer(text="Streak balvas ir kopīgas abiem pāra dalībniekiem.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -2983,7 +3040,11 @@ async def stats(interaction: discord.Interaction):
         f"🔥 Pašreizējā dienu sērija: **{streak}**\n"
         f"📅 Pēdējais izpildītais uzdevums: **{last_date}**\n"
         f"✍️ Šodien iesniegtās atbildes: **{answer_count}/2**\n"
-        f"☑️ Šodien izpildi apstiprinājuši: **{confirmations}**",
+        f"☑️ Šodien izpildi apstiprinājuši: **{confirmations}**"
+        + (
+            f"\n💎 Pāra streak Premium līdz: <t:{int(parse_task_timestamp(pair.get('streak_premium_until')).timestamp())}:F>"
+            if pair_streak_premium_is_active(pair) else ""
+        ),
         ephemeral=True,
     )
 
