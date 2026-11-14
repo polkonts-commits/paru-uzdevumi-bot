@@ -2800,14 +2800,14 @@ async def es(interaction: discord.Interaction):
     await interaction.edit_original_response(embed=embed)
 
     for step in AURA_SCAN_STEPS[1:]:
-        await asyncio.sleep(1.15)
+        await asyncio.sleep(5.0)
         embed.description = (
             f"**Mērķis:** {interaction.user.mention}\n\n"
             + "\n".join(AURA_SCAN_STEPS[:AURA_SCAN_STEPS.index(step) + 1])
         )
         await interaction.edit_original_response(embed=embed)
 
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(5.0)
     embed.title = "🔮 Auras skenēšana pabeigta"
     embed.description = (
         f"**Mērķis:** {interaction.user.mention}\n"
